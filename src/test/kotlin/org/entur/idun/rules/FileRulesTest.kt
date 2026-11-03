@@ -149,6 +149,60 @@ class FileRulesTest {
         classify(src(kotlinDao, 1, 1), narrowed) shouldBe FileClass.OTHER
     }
 
+    // --- stier som matcher både test og kilde (C1) ---
+
+    private val evil = "src/main/kotlin/x/src/test/Evil.kt"
+
+    @Test
+    fun `ny fil som matcher både test- og kildemønster er OTHER, ikke ny test`() {
+        classify(src(evil, 300, 0, FileStatus.ADDED), cfg) shouldBe FileClass.OTHER
+        val r = evaluateFiles(listOf(src(evil, 300, 0, FileStatus.ADDED)), emptyMap(), cfg)
+        r.reasons.single().code shouldBe ReasonCode.OTHER_FILE
+        r.sourceFiles shouldBe emptyList()
+    }
+
+    @Test
+    fun `endret fil som matcher både test- og kildemønster er OTHER`() {
+        classify(src(evil, 1, 1), cfg) shouldBe FileClass.OTHER
+    }
+
+    @Test
+    fun `omdøpt til eller fra en sti som matcher både test og kilde er OTHER`() {
+        classify(src(evil, 0, 0, FileStatus.RENAMED, prev = "src/main/kotlin/x/Evil.kt"), cfg) shouldBe FileClass.OTHER
+        classify(src("src/main/kotlin/x/Evil.kt", 0, 0, FileStatus.RENAMED, prev = evil), cfg) shouldBe FileClass.OTHER
+        classify(src("src/test/kotlin/EvilTest.kt", 0, 0, FileStatus.RENAMED, prev = evil), cfg) shouldBe FileClass.OTHER
+    }
+
+    // --- grener som manglet test ---
+
+    @Test
+    fun `kopiert inn i en teststi er ikke en ny test`() {
+        classify(src("src/test/kotlin/CTest.kt", 10, 0, FileStatus.COPIED, prev = "src/test/kotlin/ATest.kt"), cfg) shouldBe
+            FileClass.EXISTING_TEST
+        classify(src("src/test/kotlin/CTest.kt", 10, 0, FileStatus.COPIED, prev = "src/main/kotlin/A.kt"), cfg) shouldBe
+            FileClass.EXISTING_TEST
+    }
+
+    @Test
+    fun `flyttet fra test til kilde er EXISTING_TEST`() {
+        classify(src("src/main/kotlin/A.kt", 0, 0, FileStatus.RENAMED, prev = "src/test/kotlin/A.kt"), cfg) shouldBe
+            FileClass.EXISTING_TEST
+    }
+
+    @Test
+    fun `ny test i beskyttet sti er PROTECTED`() {
+        classify(src("src/test/resources/db/migration/V1__x.sql", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.PROTECTED
+        classify(src("src/test/kotlin/openapi/ApiTest.kt", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.PROTECTED
+    }
+
+    @Test
+    fun `innsnevret testPaths gjør tester utenfor innsnevringen til OTHER`() {
+        val narrowed = (IdunConfig.fromYaml("testPaths: [\"**/src/test/kotlin/**\"]") as ConfigResult.Ok).config
+        classify(src("src/test/kotlin/ATest.kt", 5, 0, FileStatus.ADDED), narrowed) shouldBe FileClass.NEW_TEST
+        classify(src("src/test/java/ATest.java", 5, 0, FileStatus.ADDED), narrowed) shouldBe FileClass.OTHER
+        classify(src("src/testFixtures/kotlin/Fixture.kt", 5, 0, FileStatus.ADDED), narrowed) shouldBe FileClass.OTHER
+    }
+
     @Test
     fun `innsnevret maxChangedLines brukes`() {
         val narrowed = (IdunConfig.fromYaml("maxChangedLines: 5") as ConfigResult.Ok).config

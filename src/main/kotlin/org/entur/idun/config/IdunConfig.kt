@@ -24,6 +24,12 @@ data class IdunConfig(
 
     fun isTest(path: String): Boolean = matchesAll(path, testPaths, testNarrowing)
 
+    /**
+     * `true` når [path] matcher både et test- og et kildemønster. Standardlistene brukes uten innsnevring, så en
+     * innsnevring aldri kan gjøre en tvetydig sti entydig.
+     */
+    fun looksLikeTestAndSource(path: String): Boolean = testPaths.any { it.matches(path) } && sourcePaths.any { it.matches(path) }
+
     private fun matchesAll(
         path: String,
         defaults: List<Glob>,

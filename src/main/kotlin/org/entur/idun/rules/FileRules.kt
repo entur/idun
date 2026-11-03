@@ -32,7 +32,9 @@ data class RuleResult(
 
 /**
  * Klassifiserer en endret fil. Rekkefølgen er viktig og feiler lukket:
- * beskyttet sti (ny eller gammel) vinner over alt, deretter test, deretter kilde. Alt annet er `OTHER`.
+ * beskyttet sti (ny eller gammel) vinner over alt. En sti (ny eller gammel) som matcher både et test- og et
+ * kildemønster (`src/main/kotlin/x/src/test/A.kt`) er `OTHER`, ellers kunne kildekode sniket seg inn som en
+ * ny test som verken telles eller vises modellen. Deretter test, deretter kilde. Alt annet er `OTHER`.
  */
 fun classify(
     file: ChangedFile,
@@ -41,6 +43,8 @@ fun classify(
     val paths = listOfNotNull(file.path, file.previousPath)
 
     if (paths.any { path -> config.protectedPaths.any { it.matches(path) } }) return FileClass.PROTECTED
+
+    if (paths.any { config.looksLikeTestAndSource(it) }) return FileClass.OTHER
 
     if (config.isTest(file.path)) {
         return if (file.status == FileStatus.ADDED) FileClass.NEW_TEST else FileClass.EXISTING_TEST
