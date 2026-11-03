@@ -7,6 +7,7 @@ enum class ReasonCode {
     PROTECTED_CONTENT,
     TEST_CHANGED,
     OTHER_FILE,
+    NO_SOURCE,
     MISSING_DIFF,
     TOO_LARGE,
     TOO_MANY_FILES,

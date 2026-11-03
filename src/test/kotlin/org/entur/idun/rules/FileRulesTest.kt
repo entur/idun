@@ -255,4 +255,14 @@ class FileRulesTest {
                 FileClass.OTHER
         }
     }
+
+    // --- ingen kildekode ---
+
+    @Test
+    fun `uten kildekodefiler etter reglene gir NO_SOURCE`() {
+        val r = evaluateFiles(listOf(src("src/test/kotlin/ATest.kt", 10, 0, FileStatus.ADDED)), emptyMap(), cfg)
+        r.reasons.map { it.code } shouldBe listOf(ReasonCode.NO_SOURCE)
+        r.eligible shouldBe false
+        evaluateFiles(emptyList(), emptyMap(), cfg).reasons.map { it.code } shouldBe listOf(ReasonCode.NO_SOURCE)
+    }
 }

@@ -76,7 +76,10 @@ fun classify(
     return FileClass.OTHER
 }
 
-/** Én [Reason] per fil som stopper PR-en, pluss `TOO_LARGE` hvis kildekodeendringene er for store. */
+/**
+ * Én [Reason] per fil som stopper PR-en, pluss `TOO_LARGE` hvis kildekodeendringene er for store, og `NO_SOURCE`
+ * når ingen fil stopper PR-en, men det heller ikke er noen kildekode å vurdere.
+ */
 fun evaluateFiles(
     files: List<ChangedFile>,
     contents: Map<String, FileContents>,
@@ -101,6 +104,10 @@ fun evaluateFiles(
     val changedLines = sourceFiles.sumOf { it.additions + it.deletions }
     if (changedLines > config.maxChangedLines) {
         reasons += Reason(ReasonCode.TOO_LARGE, "$changedLines av høyst ${config.maxChangedLines} linjer")
+    }
+    // Ellers ville modellen fått en tom endring (for eksempel bare nye tester) og ingenting å vurdere.
+    if (sourceFiles.isEmpty() && reasons.isEmpty()) {
+        reasons += Reason(ReasonCode.NO_SOURCE, "Ingen endret kildekode å vurdere")
     }
 
     return RuleResult(reasons, sourceFiles, changedLines)
