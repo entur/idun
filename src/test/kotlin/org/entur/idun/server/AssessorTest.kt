@@ -48,7 +48,11 @@ class AssessorTest {
             locks = PrLocks(),
             log = log.logger,
             modeOf = { repo -> if (repo == REPO) mode else Mode.OFF },
+            model = "gemini-test",
         )
+
+    private fun assessorWithModel(name: String) =
+        Assessor(factory, reviewer, OWN_APP_ID, APP_LOGIN, PrLocks(), log.logger, { mode }, model = name)
 
     private suspend fun assess() = assessor.onPullRequest(installationId = 1, repo = REPO, number = 7, action = "synchronize")
 
@@ -317,6 +321,14 @@ class AssessorTest {
             gh.mergeBaseSha = "mergebase2"
             gh.contents[FIXTURE_PATH to "mergebase2"] = "val a = 1\nval x = 2\n"
             assess()
+            reviewer.calls shouldBe 2
+        }
+
+    @Test
+    fun `ny modell gir nytt modellkall i stedet for gjenbruk`() =
+        runBlocking<Unit> {
+            assess()
+            assessorWithModel("gemini-neste").onPullRequest(1, REPO, 7, "synchronize")
             reviewer.calls shouldBe 2
         }
 

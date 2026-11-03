@@ -48,6 +48,9 @@ private fun systemPrompt(): String {
         """.trimIndent()
 }
 
+/** Øk når prompten eller sjekklisten endres, så gamle vurderinger ikke gjenbrukes. Inngår i fingeravtrykket. */
+const val PROMPT_VERSION = "1"
+
 internal fun newNonce(): String = UUID.randomUUID().toString().replace("-", "").take(16)
 
 /** Systemprompt og brukerprompt. PR-beskrivelsen er aldri med: [ReviewInput] har ikke noe felt for den. */

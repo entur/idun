@@ -95,6 +95,8 @@ class Assessor(
     private val locks: PrLocks,
     private val log: Logger,
     private val modeOf: (RepoRef) -> Mode,
+    /** Modellnavnet, til fingeravtrykket. */
+    private val model: String,
 ) {
     private class Context(
         val gh: GitHub,
@@ -313,7 +315,7 @@ class Assessor(
                         ReviewFile(file.path, checkNotNull(file.patch), content.before, content.after)
                     },
             )
-        val fingerprint = reviewFingerprint(ctx.number, mergeBase, input)
+        val fingerprint = reviewFingerprint(ctx.number, mergeBase, input, model)
         ownRun(runs)?.let { run ->
             when {
                 run.status != "completed" -> Unit

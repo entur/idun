@@ -29,7 +29,7 @@ class WebhookRouteTest {
     private val job = SupervisorJob()
     private val scope = CoroutineScope(job + Dispatchers.Default)
     private val assessor =
-        Assessor(factory, reviewer, OWN_APP_ID, APP_LOGIN, PrLocks(), CapturedLog().logger, modeOf = { Mode.ADVISE })
+        Assessor(factory, reviewer, OWN_APP_ID, APP_LOGIN, PrLocks(), CapturedLog().logger, modeOf = { Mode.ADVISE }, model = "gemini-test")
     private val deps = Dependencies(webhookSecret = secret, assessor = assessor, ownAppId = OWN_APP_ID, scope = scope)
 
     private fun sign(body: String): String {

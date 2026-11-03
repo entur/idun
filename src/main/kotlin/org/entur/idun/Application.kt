@@ -142,6 +142,7 @@ data class Dependencies(
                         locks = PrLocks(),
                         log = LoggerFactory.getLogger(Assessor::class.java),
                         modeOf = repoModes::modeOf,
+                        model = model,
                     )
                 log.info("startup.ready appId={} appLogin={} model={} {}", identity.appId, appLogin, model, repoModes)
                 Dependencies(webhookSecret = webhookSecret, assessor = assessor, ownAppId = identity.appId)
