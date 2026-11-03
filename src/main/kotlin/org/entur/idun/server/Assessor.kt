@@ -281,8 +281,12 @@ class Assessor(
         decideBeforeReview(ctx.mode, pr, title, ci, config, null)?.let { return Assessment.Fresh(it) }
         val idunConfig = (config as? ConfigResult.Ok)?.config ?: error("Ugyldig konfig skulle gitt NeedsHuman")
 
-        val files = gh.pullRequestFiles(repo, ctx.number)
         val mergeBase = gh.mergeBase(repo, pr.baseSha, pr.headSha)
+        // Fra faste sha-er: `/pulls/{n}/files` følger PR-ens gjeldende head og kunne gitt filene til en nyere push.
+        val files = gh.compareFiles(repo, mergeBase, pr.headSha)
+        check(files.size == pr.changedFiles) {
+            "compare ga ${files.size} filer, men PR-en har changed_files=${pr.changedFiles}"
+        }
         val contents = sourceContents(ctx, pr, mergeBase, files, idunConfig)
         val rules = evaluateFiles(files, contents, idunConfig)
         // Den eneste veien til modellen.

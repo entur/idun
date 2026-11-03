@@ -152,6 +152,24 @@ class AssessorTest {
         }
 
     @Test
+    fun `filene hentes fra compare mellom merge-base og head, ikke fra PR-ens gjeldende head`() =
+        runBlocking<Unit> {
+            assess()
+            gh.mergeBaseCalls.first() shouldBe (BASE to HEAD)
+            gh.compareCalls shouldContainExactly listOf(MERGE_BASE to HEAD)
+        }
+
+    @Test
+    fun `antall filer som avviker fra changedFiles gir feil-check uten modellkall`() =
+        runBlocking<Unit> {
+            gh.pr = gh.pr.copy(changedFiles = 2)
+            assess()
+            reviewer.calls shouldBe 0
+            gh.ownRuns.getValue(HEAD).externalId shouldBe "error"
+            log.single("idun.error") shouldContain "changed_files"
+        }
+
+    @Test
     fun `omdøpt fil leses fra gammel sti på merge-base og ny sti på head`() =
         runBlocking<Unit> {
             val old = "src/main/kotlin/org/entur/products/Old.kt"
@@ -317,7 +335,7 @@ class AssessorTest {
             assess()
             mode = Mode.APPROVE
             gh.labels.clear()
-            gh.onCall = { if (it == "pullRequestFiles") gh.pr = gh.pr.copy(headSha = "head2") }
+            gh.onCall = { if (it == "compareFiles") gh.pr = gh.pr.copy(headSha = "head2") }
             assess()
             reviewer.calls shouldBe 1
             gh.reviews.shouldBeEmpty()
@@ -540,7 +558,7 @@ class AssessorTest {
     @Test
     fun `unntak fra GitHub gir neutral feil-check`() =
         runBlocking<Unit> {
-            gh.onCall = { if (it == "pullRequestFiles") throw GitHubApiException(502, "Bad gateway") }
+            gh.onCall = { if (it == "compareFiles") throw GitHubApiException(502, "Bad gateway") }
             assess()
             val check = gh.ownRuns.getValue(HEAD)
             check.status shouldBe "completed"

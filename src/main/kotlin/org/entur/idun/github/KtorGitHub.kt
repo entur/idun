@@ -48,6 +48,9 @@ internal const val GITHUB_API_VERSION = "2022-11-28"
 private const val PER_PAGE = "100"
 private const val MAX_PAGES = 1000
 
+/** GitHubs tak for filer i et compare-svar. */
+private const val MAX_COMPARE_FILES = 300
+
 internal val githubJson =
     Json {
         ignoreUnknownKeys = true
@@ -100,12 +103,19 @@ class KtorGitHub(
         )
     }
 
-    override suspend fun pullRequestFiles(
+    /**
+     * Uten sideparametre gir compare alle filene på første svar, men høyst [MAX_COMPARE_FILES]. Er listen så lang,
+     * kan den være avkortet, og da kastes det.
+     */
+    override suspend fun compareFiles(
         repo: RepoRef,
-        number: Int,
-    ): List<ChangedFile> =
-        paged(repoUrl(repo, "pulls", number, "files", query = perPage())) { it.body<List<PullFileDto>>() }
-            .map { it.toDomain() }
+        base: String,
+        head: String,
+    ): List<ChangedFile> {
+        val files = call(HttpMethod.Get, repoUrl(repo, "compare", "$base...$head")).body<CompareFilesDto>().files
+        check(files.size < MAX_COMPARE_FILES) { "compare $base...$head har ${files.size} filer og kan være avkortet" }
+        return files.map { it.toDomain() }
+    }
 
     override suspend fun pullRequestsForCommit(
         repo: RepoRef,
@@ -498,6 +508,11 @@ private class PullRequestDto(
         val id: Long,
     )
 }
+
+@Serializable
+private class CompareFilesDto(
+    val files: List<PullFileDto>,
+)
 
 @Serializable
 private class PullFileDto(

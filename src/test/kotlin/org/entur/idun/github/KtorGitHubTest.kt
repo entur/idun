@@ -48,10 +48,10 @@ class KtorGitHubTest {
     private fun HttpRequestData.bodyJson(): JsonObject =
         Json.parseToJsonElement((body as TextContent).text) as JsonObject
 
-    // --- paginering og fil-mapping ---
+    // --- paginering ---
 
     @Test
-    fun `pullRequestFiles foelger Link-header over to sider og mapper rename`() =
+    fun `lister foelger Link-header over to sider`() =
         runBlocking<Unit> {
             val requested = mutableListOf<String>()
             val github =
@@ -60,48 +60,17 @@ class KtorGitHubTest {
                     when (req.url.parameters["page"]) {
                         null ->
                             json(
-                                """[{"filename":"a/New.kt","previous_filename":"a/Old.kt","status":"renamed","additions":1,"deletions":2,"patch":"@@ x"}]""",
+                                """[{"number":3}]""",
                                 HttpStatusCode.OK,
                                 "Link" to
-                                    """<https://api.github.com/repos/entur/products-api/pulls/5/files?per_page=100&page=2>; rel="next", <https://api.github.com/repos/entur/products-api/pulls/5/files?per_page=100&page=2>; rel="last"""",
+                                    """<https://api.github.com/repos/entur/products-api/commits/abc/pulls?per_page=100&page=2>; rel="next", <https://api.github.com/repos/entur/products-api/commits/abc/pulls?per_page=100&page=2>; rel="last"""",
                             )
-                        "2" -> json("""[{"filename":"b.kt","status":"added","additions":3,"deletions":0}]""")
+                        "2" -> json("""[{"number":4}]""")
                         else -> error("uventet side")
                     }
                 }
-            github.pullRequestFiles(repo, 5) shouldContainExactly
-                listOf(
-                    ChangedFile("a/New.kt", "a/Old.kt", FileStatus.RENAMED, 1, 2, "@@ x"),
-                    ChangedFile("b.kt", null, FileStatus.ADDED, 3, 0, null),
-                )
+            github.pullRequestsForCommit(repo, "abc") shouldContainExactly listOf(3, 4)
             requested.size shouldBe 2
-        }
-
-    @Test
-    fun `ukjent filstatus kaster`() {
-        val github = gh { json("""[{"filename":"a.kt","status":"teleported","additions":0,"deletions":0}]""") }
-        shouldThrow<Exception> { runBlocking { github.pullRequestFiles(repo, 5) } }
-    }
-
-    @Test
-    fun `alle kjente filstatuser mappes`() =
-        runBlocking<Unit> {
-            val statuses = listOf("added", "modified", "removed", "renamed", "copied", "changed", "unchanged")
-            val body =
-                statuses.joinToString(",", "[", "]") {
-                    """{"filename":"$it.kt","status":"$it","additions":0,"deletions":0}"""
-                }
-            val github = gh { json(body) }
-            github.pullRequestFiles(repo, 1).map { it.status } shouldContainExactly
-                listOf(
-                    FileStatus.ADDED,
-                    FileStatus.MODIFIED,
-                    FileStatus.REMOVED,
-                    FileStatus.RENAMED,
-                    FileStatus.COPIED,
-                    FileStatus.CHANGED,
-                    FileStatus.UNCHANGED,
-                )
         }
 
     @Test
@@ -112,18 +81,84 @@ class KtorGitHubTest {
                 hosts += req.url.host
                 json("[]", HttpStatusCode.OK, "Link" to """<https://evil.example/x?page=2>; rel="next"""")
             }
-        shouldThrow<IllegalStateException> { runBlocking { github.pullRequestFiles(repo, 5) } }
+        shouldThrow<IllegalStateException> { runBlocking { github.pullRequestsForCommit(repo, "abc") } }
         hosts shouldContainExactly listOf("api.github.com")
     }
 
     @Test
     fun `ikke-2xx paa liste kaster i stedet for tom liste`() {
         val github = gh { json("""{"message":"boom"}""", HttpStatusCode.InternalServerError) }
-        val e = shouldThrow<GitHubApiException> { runBlocking { github.pullRequestFiles(repo, 5) } }
+        val e = shouldThrow<GitHubApiException> { runBlocking { github.pullRequestsForCommit(repo, "abc") } }
         e.status shouldBe 500
-        shouldThrow<GitHubApiException> { runBlocking { gh { json("{}", HttpStatusCode.NotFound) }.labels(repo, 1) } }
+        shouldThrow<GitHubApiException> { runBlocking { gh { json("{}", HttpStatusCode.NotFound) }.reviews(repo, 1) } }
         shouldThrow<GitHubApiException> { runBlocking { gh { json("{}", HttpStatusCode.Forbidden) }.comments(repo, 1) } }
     }
+
+    // --- compareFiles ---
+
+    private fun compareBody(files: String) = """{"merge_base_commit":{"sha":"mb"},"files":$files}"""
+
+    @Test
+    fun `compareFiles henter filene fra compare mellom to faste sha-er og mapper rename`() =
+        runBlocking<Unit> {
+            var seen: HttpRequestData? = null
+            val github =
+                gh { req ->
+                    seen = req
+                    json(
+                        compareBody(
+                            """[{"filename":"a/New.kt","previous_filename":"a/Old.kt","status":"renamed","additions":1,"deletions":2,"patch":"@@ x"},""" +
+                                """{"filename":"b.kt","status":"added","additions":3,"deletions":0}]""",
+                        ),
+                    )
+                }
+            github.compareFiles(repo, "mb", "head1") shouldContainExactly
+                listOf(
+                    ChangedFile("a/New.kt", "a/Old.kt", FileStatus.RENAMED, 1, 2, "@@ x"),
+                    ChangedFile("b.kt", null, FileStatus.ADDED, 3, 0, null),
+                )
+            seen!!.url.encodedPath shouldBe "/repos/entur/products-api/compare/mb...head1"
+            // Uten sideparametre: da gir GitHub alle filene (høyst 300) på første side.
+            seen.url.parameters.isEmpty() shouldBe true
+        }
+
+    @Test
+    fun `compareFiles kaster naar listen kan vaere avkortet`() {
+        val many = (1..300).joinToString(",", "[", "]") { """{"filename":"f$it.kt","status":"modified","additions":1,"deletions":1}""" }
+        shouldThrow<IllegalStateException> { runBlocking { gh { json(compareBody(many)) }.compareFiles(repo, "mb", "h") } }
+    }
+
+    @Test
+    fun `compareFiles kaster naar files mangler`() {
+        shouldThrow<Exception> { runBlocking { gh { json("""{"merge_base_commit":{"sha":"mb"}}""") }.compareFiles(repo, "mb", "h") } }
+    }
+
+    @Test
+    fun `ukjent filstatus kaster`() {
+        val github = gh { json(compareBody("""[{"filename":"a.kt","status":"teleported","additions":0,"deletions":0}]""")) }
+        shouldThrow<Exception> { runBlocking { github.compareFiles(repo, "mb", "h") } }
+    }
+
+    @Test
+    fun `alle kjente filstatuser mappes`() =
+        runBlocking<Unit> {
+            val statuses = listOf("added", "modified", "removed", "renamed", "copied", "changed", "unchanged")
+            val body =
+                statuses.joinToString(",", "[", "]") {
+                    """{"filename":"$it.kt","status":"$it","additions":0,"deletions":0}"""
+                }
+            val github = gh { json(compareBody(body)) }
+            github.compareFiles(repo, "mb", "h").map { it.status } shouldContainExactly
+                listOf(
+                    FileStatus.ADDED,
+                    FileStatus.MODIFIED,
+                    FileStatus.REMOVED,
+                    FileStatus.RENAMED,
+                    FileStatus.COPIED,
+                    FileStatus.CHANGED,
+                    FileStatus.UNCHANGED,
+                )
+        }
 
     @Test
     fun `sender riktige headere`() =

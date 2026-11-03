@@ -84,6 +84,9 @@ internal class FakeGitHub(
     var pullRequestReads = 0
     var mergeBaseSha = MERGE_BASE
 
+    /** Argumentene (base, head) til hvert `mergeBase`-kall. */
+    val mergeBaseCalls = mutableListOf<Pair<String, String>>()
+
     /** Kalles med navnet på hvert kall; kan kaste for å simulere feil. */
     var onCall: (String) -> Unit = {}
 
@@ -107,11 +110,16 @@ internal class FakeGitHub(
         return pr
     }
 
-    override suspend fun pullRequestFiles(
+    /** Argumentene (base, head) til hvert `compareFiles`-kall. */
+    val compareCalls = mutableListOf<Pair<String, String>>()
+
+    override suspend fun compareFiles(
         repo: RepoRef,
-        number: Int,
+        base: String,
+        head: String,
     ): List<ChangedFile> {
-        call("pullRequestFiles")
+        call("compareFiles")
+        compareCalls += base to head
         return files
     }
 
@@ -129,6 +137,7 @@ internal class FakeGitHub(
         head: String,
     ): String {
         call("mergeBase")
+        mergeBaseCalls += base to head
         return mergeBaseSha
     }
 

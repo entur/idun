@@ -85,9 +85,14 @@ interface GitHub {
         number: Int,
     ): PullRequest
 
-    suspend fun pullRequestFiles(
+    /**
+     * Filene som er endret fra [base] til [head], fra compare-API-et. Begge er faste sha-er, så listen kan ikke
+     * flytte seg med PR-ens head. Kaster når listen kan være avkortet.
+     */
+    suspend fun compareFiles(
         repo: RepoRef,
-        number: Int,
+        base: String,
+        head: String,
     ): List<ChangedFile>
 
     suspend fun pullRequestsForCommit(
