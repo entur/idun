@@ -7,12 +7,20 @@ junit = "5.14.4"
 kotest = "6.2.6"
 mockk = "1.14.11"
 kaml = "0.104.0"
+javaJwt = "4.6.2"
+bouncycastle = "1.86"
 
 [libraries]
 ktor-server-core = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation-jvm", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json-jvm", version.ref = "ktor" }
+ktor-client-core = { module = "io.ktor:ktor-client-core-jvm", version.ref = "ktor" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio-jvm", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation-jvm", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock-jvm", version.ref = "ktor" }
+java-jwt = { module = "com.auth0:java-jwt", version.ref = "javaJwt" }
+bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 entur-logback-logstash-encoder-gcp = { module = "no.entur.logging.cloud:logback-logstash-encoder-gcp", version.ref = "enturLogging" }
