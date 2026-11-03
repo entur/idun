@@ -451,6 +451,14 @@ class AssessorTest {
         }
 
     @Test
+    fun `sjekken etter modellen regner merge-base fra den nye baseSha`() =
+        runBlocking<Unit> {
+            reviewer.beforeAnswer = { gh.pr = gh.pr.copy(baseSha = "base3") }
+            assess()
+            gh.mergeBaseCalls shouldContainExactly listOf(BASE to HEAD, "base3" to HEAD)
+        }
+
+    @Test
     fun `etter ny base er gammel godkjenning og label borte mens modellen kjører`() =
         runBlocking<Unit> {
             mode = Mode.APPROVE
