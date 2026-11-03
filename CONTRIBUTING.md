@@ -10,7 +10,7 @@
 
 | Kommando | Hva den gjør |
 |---|---|
-| `./gradlew check` | enhetstester, inkludert regeltesten av kanarifuglene. Det samme som CI-jobben Test |
+| `./gradlew check` | enhetstester, inkludert regeltesten av de syntetiske kanarifuglene. Trenger ikke nettverk. Det samme som CI-jobben Test |
 | `./gradlew eval` | kjører kanarifuglene mot den **ekte** Gemini-modellen (under) |
 | `./gradlew installDist` | bygger distribusjonen |
 | `docker build -t idun:local .` | bygger imaget slik PR-bygget gjør, uten å pushe |
@@ -46,7 +46,20 @@ Vertex-kallene bruker dine egne Google-legitimasjon lokalt: `gcloud auth applica
 
 ## Kjør eval
 
-`./gradlew eval` sender kanarifuglene i `eval/canaries` gjennom filreglene og, hvis de slipper gjennom, gjennom den ekte modellen. Den feiler hvis en kanarifugl med forventet utfall får et annet utfall, eller hvis modellen ikke svarer. Den koster penger, så den er bevisst ikke koblet til `check`.
+`./gradlew eval` sender kanarifuglene i `eval/canaries` gjennom filreglene og, hvis de slipper gjennom, gjennom den ekte modellen. Den feiler hvis en kanarifugl med forventet utfall får et annet utfall, hvis reglene ikke gir grunnkodene i `rules` i `meta.json`, eller hvis modellen ikke svarer. Den koster penger, så den er bevisst ikke koblet til `check`.
+
+Det finnes to slags kanarifugler:
+
+- **Syntetiske** (`before/` og `after/` ligger i repoet). Regeltesten i `./gradlew check` sjekker dem uten nettverk.
+- **Ekte PR-er** (`pr-*`). Bare `meta.json` ligger i repoet, med `source` (repo og PR-nummer) og `rules`. Kilderepoet (`entur/products-api`) er internt mens `entur/idun` er offentlig, så koden legges **aldri** inn her. Evalen henter innholdet før og etter med GitHub CLI (`gh pr view` og `gh api`, bare lesing) til en midlertidig mappe som slettes etterpå, og sjekker også at linjetallene fra diffen stemmer med GitHubs. Uten `gh`, eller uten `gh auth login` med lesetilgang til kilderepoet, rapporteres de som `SKIPPED`, og evalen feiler (exit-kode 1). En hoppet over kanarifugl er aldri bestått.
+
+Hentingen og regelsjekken for de ekte PR-ene kan kjøres alene, uten modellen og uten kostnad:
+
+```sh
+IDUN_CANARY_FETCH=1 ./gradlew test --tests 'org.entur.idun.eval.CanaryFetcherTest'
+```
+
+For å legge til en ekte PR: lag `eval/canaries/pr-<nummer>/meta.json` med `title`, `expected`, `source` og `rules`, uten kildekode.
 
 ```sh
 GCP_PROJECT=ent-idun-prd \
