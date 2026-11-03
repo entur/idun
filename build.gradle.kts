@@ -30,6 +30,7 @@ dependencies {
     implementation(libs.java.jwt)
     implementation(libs.bouncycastle.bcpkix)
     implementation(libs.kaml)
+    implementation(libs.google.genai)
     implementation(libs.logback.classic)
     implementation(libs.entur.logback.logstash.encoder.gcp)
 

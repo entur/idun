@@ -9,6 +9,7 @@ mockk = "1.14.11"
 kaml = "0.104.0"
 javaJwt = "4.6.2"
 bouncycastle = "1.86"
+googleGenai = "1.80.0"
 
 [libraries]
 ktor-server-core = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
@@ -21,6 +22,7 @@ ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negoti
 ktor-client-mock = { module = "io.ktor:ktor-client-mock-jvm", version.ref = "ktor" }
 java-jwt = { module = "com.auth0:java-jwt", version.ref = "javaJwt" }
 bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
+google-genai = { module = "com.google.genai:google-genai", version.ref = "googleGenai" }
 kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 entur-logback-logstash-encoder-gcp = { module = "no.entur.logging.cloud:logback-logstash-encoder-gcp", version.ref = "enturLogging" }
