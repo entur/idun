@@ -1,9 +1,10 @@
 package org.entur.idun.report
 
-private val URL = Regex("(?i)(?:[a-z][a-z0-9+.-]*://|www\\.)\\S+")
+private val URL = Regex("(?i)(?:[a-z][a-z0-9+.-]*://|www\\.)\\S*")
 private val LINE_BREAKS = Regex("\\s*[\\r\\n]+\\s*")
 private val MENTION = Regex("@")
 private val ISSUE_REF = Regex("#(?=\\d)")
+private const val PRE_CUT_FACTOR = 4
 private const val ZERO_WIDTH_SPACE = "​"
 
 /**
@@ -17,7 +18,9 @@ fun defuse(
 ): String {
     require(maxLength >= 1) { "maxLength må være minst 1" }
     val cleaned =
+        // Kuttes først: lenke-regexen er kvadratisk på lange bokstavrekker, og inputen er upålitelig.
         text
+            .take(maxLength * PRE_CUT_FACTOR)
             .replace(URL, "(lenke fjernet)")
             .replace('`', '\'')
             .replace(MENTION, "@$ZERO_WIDTH_SPACE")

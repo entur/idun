@@ -4,6 +4,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
+import kotlin.system.measureTimeMillis
 
 class DefuseTest {
     @Test
@@ -75,5 +76,21 @@ class DefuseTest {
             out shouldNotContain "://"
             out.lowercase() shouldNotContain "www."
         }
+    }
+
+    @Test
+    fun `defuse er rask paa svaert lang input`() {
+        var out = ""
+        val elapsed = measureTimeMillis { out = defuse("a".repeat(200_000)) }
+        (elapsed < 500) shouldBe true
+        (out.length <= 300) shouldBe true
+    }
+
+    @Test
+    fun `defuse lar ingen skjema-markor sta igjen naar lenken krysser forhandskuttet`() {
+        // Linjeskiftene slås sammen til ett mellomrom, så «https://» havner innenfor de 20 første tegnene.
+        val out = defuse("\n".repeat(72) + "https://x.example", 20)
+        out shouldNotContain "://"
+        out shouldNotContain "x.example"
     }
 }
