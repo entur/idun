@@ -94,7 +94,7 @@ Tjenesten deployes før noen hemmeligheter finnes. Terraform lager en plassholde
    ```
    Lim inn det utskrevne webhook-hemmeligheten i appen også.
 4. **Sett `github_app_id` og `github_app_slug`** i `terraform/env/prd.tfvars` og merge med en `fix:`-commit. Det lager en ny revisjon som leser de siste hemmelighetsversjonene. Instanser som starter senere gjør det samme, siden Cloud Run løser `latest` når en instans starter.
-5. **Aktiver webhooken** på appen og installer den på `entur/idun-sandbox` (sett `idun-mode=approve`, for testing) og på `entur/products-api` (sett `idun-mode=advise`).
+5. **Aktiver webhooken** på appen og installer den på `entur/idun-sandbox` og `entur/products-api`. Modusen per repo står i `repo_modes` i `terraform/env/prd.tfvars` (`entur/idun-sandbox=approve` for testing; `entur/products-api=advise` legges til senere) og endres med en PR og en release. Et repo som ikke er listet, er `off`.
 6. **Verifiser** at en `refactor:`-PR i sandbox-repoet får check, kommentar og label.
 
 Før du bytter hemmelighetene: `GEMINI_PRICE_IN_PER_MTOK` og `GEMINI_PRICE_OUT_PER_MTOK` i `terraform/env/prd.tfvars` må bekreftes mot gjeldende Vertex-listepriser. Idun regner kostnaden mot det daglige taket ut fra dem.
