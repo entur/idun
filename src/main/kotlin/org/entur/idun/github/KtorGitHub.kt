@@ -322,7 +322,7 @@ class KtorGitHub(
         number: Int,
     ): List<Review> =
         paged(repoUrl(repo, "pulls", number, "reviews", query = perPage())) { it.body<List<ReviewDto>>() }
-            .map { Review(it.id, it.user.login, it.state, it.body.orEmpty()) }
+            .map { Review(it.id, it.user.login, it.state, it.body.orEmpty(), it.commitId) }
 
     override suspend fun approve(
         repo: RepoRef,
@@ -647,4 +647,5 @@ private class ReviewDto(
     val user: UserDto,
     val state: String,
     val body: String? = null,
+    @SerialName("commit_id") val commitId: String? = null,
 )

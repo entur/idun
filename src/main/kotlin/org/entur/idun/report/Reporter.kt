@@ -5,6 +5,7 @@ import org.entur.idun.decide.Outcome
 import org.entur.idun.github.GitHub
 import org.entur.idun.github.GitHubApiException
 import org.entur.idun.github.RepoRef
+import org.entur.idun.github.Review
 
 const val APPROVED_LABEL = "idun:approved"
 const val NEEDS_HUMAN_LABEL = "idun:needs-human"
@@ -18,6 +19,8 @@ private val APPROVAL_MARKER = Regex("<!-- idun:approval sha=([0-9A-Za-z]+) -->")
 
 private fun approvalBody(sha: String) =
     "Idun har vurdert refaktoreringen som trygg.\n\n<!-- idun:approval sha=$sha -->"
+
+enum class ApprovalState { NONE, APPROVED, VETOED }
 
 /** Skriver Iduns eget resultat til GitHub. `appLogin` er Iduns bruker; bare dens egne objekter røres. */
 class Reporter(
@@ -65,15 +68,28 @@ class Reporter(
         gh.approve(repo, number, sha, approvalBody(sha))
     }
 
-    /** `true` når Idun allerede har en gjeldende (`APPROVED`) godkjenning med markør for [sha]. */
-    suspend fun hasApproval(
+    /**
+     * Iduns godkjenning av [sha]: `APPROVED` når Idun har en gjeldende godkjenning med markør for [sha], `VETOED`
+     * når en egen review på [sha] (markør eller `commit_id`) er trukket tilbake (`DISMISSED`), ellers `NONE`.
+     *
+     * GitHub sier ikke hvem som trakk en review tilbake, så også Iduns egne tilbaketrekkinger gir `VETOED`. Idun
+     * godkjenner altså aldri samme commit på nytt etter en tilbaketrekking; da må et menneske godkjenne, eller en
+     * ny push gi en ny commit. Det koster en manuell godkjenning når tittel eller base endres på samme head, men et
+     * menneskes tilbaketrekking blir aldri overkjørt.
+     */
+    suspend fun approvalState(
         repo: RepoRef,
         number: Int,
         sha: String,
-    ): Boolean =
-        gh.reviews(repo, number).any {
-            it.login == appLogin && it.state == "APPROVED" && APPROVAL_MARKER.find(it.body)?.groupValues?.get(1) == sha
+    ): ApprovalState {
+        val own = gh.reviews(repo, number).filter { it.login == appLogin }
+        fun Review.isFor(sha: String) = commitId == sha || APPROVAL_MARKER.find(body)?.groupValues?.get(1) == sha
+        return when {
+            own.any { it.state == "DISMISSED" && it.isFor(sha) } -> ApprovalState.VETOED
+            own.any { it.state == "APPROVED" && APPROVAL_MARKER.find(it.body)?.groupValues?.get(1) == sha } -> ApprovalState.APPROVED
+            else -> ApprovalState.NONE
         }
+    }
 
     /**
      * Trekker tilbake Iduns egne `APPROVED`-reviews hvis markør-sha ikke er [keepSha]. En godkjenning uten

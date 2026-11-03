@@ -548,10 +548,14 @@ class KtorGitHubTest {
                         dismissed = Triple(req.method, req.url.encodedPath, req.bodyJson())
                         json("""{"id":77}""")
                     } else {
-                        json("""[{"id":77,"user":{"login":"idun[bot]"},"state":"APPROVED","body":null}]""")
+                        json(
+                            """[{"id":77,"user":{"login":"idun[bot]"},"state":"APPROVED","body":null},""" +
+                                """{"id":78,"user":{"login":"idun[bot]"},"state":"DISMISSED","body":"x","commit_id":"abc"}]""",
+                        )
                     }
                 }
-            github.reviews(repo, 5) shouldContainExactly listOf(Review(77, "idun[bot]", "APPROVED", ""))
+            github.reviews(repo, 5) shouldContainExactly
+                listOf(Review(77, "idun[bot]", "APPROVED", ""), Review(78, "idun[bot]", "DISMISSED", "x", commitId = "abc"))
             github.dismissReview(repo, 5, 77, "ikke lenger gyldig")
             dismissed!!.second shouldBe "/repos/entur/products-api/pulls/5/reviews/77/dismissals"
             dismissed.third shouldBe buildJsonObject { put("message", "ikke lenger gyldig") }

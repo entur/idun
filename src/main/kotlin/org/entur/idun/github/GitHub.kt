@@ -52,6 +52,8 @@ data class Review(
     val login: String,
     val state: String,
     val body: String,
+    /** Commiten reviewen ble gitt på (`commit_id`). */
+    val commitId: String? = null,
 )
 
 data class IssueComment(

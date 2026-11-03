@@ -100,6 +100,24 @@ class ReporterTest {
         }
 
     @Test
+    fun `approvalState skiller gjeldende, tilbaketrukket og ingen egen godkjenning`() =
+        runBlocking<Unit> {
+            coEvery { gh.reviews(repo, 1) } returns
+                listOf(
+                    approval(10, "idun[bot]", "a"),
+                    approval(11, "idun[bot]", "b", state = "DISMISSED"),
+                    Review(12, "idun[bot]", "DISMISSED", "uten markor", commitId = "c"),
+                    approval(13, "stunor", "d", state = "DISMISSED"),
+                    approval(14, "idun[bot]", "a", state = "COMMENTED"),
+                )
+            reporter.approvalState(repo, 1, "a") shouldBe ApprovalState.APPROVED
+            reporter.approvalState(repo, 1, "b") shouldBe ApprovalState.VETOED
+            reporter.approvalState(repo, 1, "c") shouldBe ApprovalState.VETOED
+            reporter.approvalState(repo, 1, "d") shouldBe ApprovalState.NONE
+            reporter.approvalState(repo, 1, "e") shouldBe ApprovalState.NONE
+        }
+
+    @Test
     fun `approve sender markor med sha`() =
         runBlocking<Unit> {
             val body = slot<String>()

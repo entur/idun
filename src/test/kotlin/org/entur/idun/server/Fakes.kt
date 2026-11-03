@@ -265,7 +265,7 @@ internal class FakeGitHub(
         body: String,
     ) {
         call("approve")
-        reviews += Review(nextId++, APP_LOGIN, "APPROVED", body)
+        reviews += Review(nextId++, APP_LOGIN, "APPROVED", body, commitId = sha)
         write("approve $sha")
         afterApprove()
     }

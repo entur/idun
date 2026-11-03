@@ -19,6 +19,7 @@ import org.entur.idun.github.GitHubFactory
 import org.entur.idun.github.PullRequest
 import org.entur.idun.github.RepoRef
 import org.entur.idun.report.APPROVED_LABEL
+import org.entur.idun.report.ApprovalState
 import org.entur.idun.report.CHECK_NAME
 import org.entur.idun.report.COMMENT_MARKER
 import org.entur.idun.report.NEEDS_HUMAN_LABEL
@@ -418,13 +419,23 @@ class Assessor(
         logAssessed(ctx, pr.headSha, if (assessment.safe) SAFE_ID else NEEDS_HUMAN_ID, emptyList(), 0.0, reused = true)
     }
 
-    /** Godkjenner bare i `APPROVE` (advise godkjenner aldri), og trekker tilbake hvis head flyttet seg imens. */
+    /**
+     * Godkjenner bare i `APPROVE` (advise godkjenner aldri), og trekker tilbake hvis head flyttet seg imens.
+     * Er en egen review på [sha] trukket tilbake, godkjennes [sha] aldri på nytt (se [Reporter.approvalState]).
+     */
     private suspend fun approveIfAllowed(
         ctx: Context,
         sha: String,
     ) {
         if (ctx.mode != Mode.APPROVE) return
-        if (ctx.reporter.hasApproval(ctx.repo, ctx.number, sha)) return
+        when (ctx.reporter.approvalState(ctx.repo, ctx.number, sha)) {
+            ApprovalState.APPROVED -> return
+            ApprovalState.VETOED -> {
+                log.info("idun.approval_vetoed repo={} pr={} sha={}", ctx.repo.slug(), ctx.number, sha)
+                return
+            }
+            ApprovalState.NONE -> Unit
+        }
         ctx.reporter.approve(ctx.repo, ctx.number, sha)
         if (ctx.gh.pullRequest(ctx.repo, ctx.number).headSha != sha) {
             ctx.reporter.dismissApprovals(ctx.repo, ctx.number, keepSha = null)

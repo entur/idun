@@ -430,9 +430,11 @@ class AssessorTest {
             reviewer.calls shouldBe 2
             statesDuringReview shouldBe listOf("DISMISSED")
             labelsDuringReview shouldBe emptySet()
-            // Etterpå er den nye vurderingen skrevet og godkjent på nytt.
-            gh.reviews.map { it.state } shouldContainExactly listOf("DISMISSED", "APPROVED")
+            // Etterpå er den nye vurderingen skrevet, men samme commit godkjennes ikke på nytt etter en
+            // tilbaketrekking (R30): et menneske må godkjenne, eller en ny push gi en ny commit.
+            gh.reviews.map { it.state } shouldContainExactly listOf("DISMISSED")
             gh.labels shouldContainExactly setOf(APPROVED_LABEL)
+            log.single("idun.approval_vetoed") shouldContain "sha=$HEAD"
         }
 
     @Test
@@ -592,6 +594,43 @@ class AssessorTest {
             gh.reviews += Review(9, APP_LOGIN, "APPROVED", "ok ${approvalOf("old")}")
             assess()
             gh.reviews.single { it.id == 9L }.state shouldBe "DISMISSED"
+        }
+
+    @Test
+    fun `godkjenning et menneske har trukket tilbake gis ikke på nytt for samme commit`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            assess()
+            gh.reviews.single().state shouldBe "APPROVED"
+            // Et menneske trekker godkjenningen tilbake.
+            gh.reviews[0] = gh.reviews[0].copy(state = "DISMISSED")
+
+            gh.prsForCommit[HEAD] = listOf(7)
+            assessor.onCommit(installationId = 1, repo = REPO, sha = HEAD)
+
+            gh.reviews.map { it.state } shouldContainExactly listOf("DISMISSED")
+            gh.writes.count { it == "approve $HEAD" } shouldBe 1
+            log.single("idun.approval_vetoed") shouldContain "sha=$HEAD"
+        }
+
+    @Test
+    fun `tilbaketrukket godkjenning uten markør, men med commit_id, gis ikke på nytt`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            gh.reviews += Review(9, APP_LOGIN, "DISMISSED", "Godkjent", commitId = HEAD)
+            assess()
+            gh.reviews.none { it.state == "APPROVED" } shouldBe true
+            log.single("idun.approval_vetoed") shouldContain "pr=7"
+        }
+
+    @Test
+    fun `tilbaketrukket godkjenning av en annen commit stopper ikke godkjenning av head`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            gh.reviews += Review(9, APP_LOGIN, "DISMISSED", "ok ${approvalOf("old")}", commitId = "old")
+            gh.reviews += Review(10, "en-person", "DISMISSED", "ok ${approvalOf(HEAD)}", commitId = HEAD)
+            assess()
+            gh.reviews.single { it.state == "APPROVED" }.commitId shouldBe HEAD
         }
 
     @Test
