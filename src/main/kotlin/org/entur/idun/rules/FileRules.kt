@@ -16,6 +16,12 @@ data class ChangedFile(
 
 enum class FileClass { PROTECTED, EXISTING_TEST, NEW_TEST, SOURCE, OTHER }
 
+/**
+ * Kontrolltegn og linjeskift (alt under U+0020, U+007F, U+0085, U+2028 og U+2029). En filsti med slike tegn er
+ * `OTHER`, og de fjernes fra tittelen før den når modellen, så de ikke kan bryte opp prompten eller rapportene.
+ */
+val CONTROL_CHARACTERS = Regex("[\\u0000-\\u001f\\u007f\\u0085\\u2028\\u2029]")
+
 /** Filendelsene en ny fil under en teststi må ha for å telle som ny test. */
 private val TEST_CODE_SUFFIXES = listOf(".kt", ".java")
 
@@ -35,7 +41,7 @@ data class RuleResult(
 
 /**
  * Klassifiserer en endret fil. Rekkefølgen er viktig og feiler lukket:
- * beskyttet sti (ny eller gammel) vinner over alt. En sti (ny eller gammel) som matcher både et test- og et
+ * en sti (ny eller gammel) med [CONTROL_CHARACTERS] er `OTHER`, og beskyttet sti (ny eller gammel) vinner over resten. En sti (ny eller gammel) som matcher både et test- og et
  * kildemønster (`src/main/kotlin/x/src/test/A.kt`) er `OTHER`, ellers kunne kildekode sniket seg inn som en
  * ny test som verken telles eller vises modellen. Deretter test, deretter kilde. Alt annet er `OTHER`.
  */
@@ -44,6 +50,8 @@ fun classify(
     config: IdunConfig,
 ): FileClass {
     val paths = listOfNotNull(file.path, file.previousPath)
+
+    if (paths.any { CONTROL_CHARACTERS.containsMatchIn(it) }) return FileClass.OTHER
 
     if (paths.any { path -> config.protectedPaths.any { it.matches(path) } }) return FileClass.PROTECTED
 

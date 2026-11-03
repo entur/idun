@@ -243,4 +243,16 @@ class FileRulesTest {
             classify(src(path, 1, 1), cfg) shouldBe FileClass.PROTECTED
         }
     }
+
+    // --- kontrolltegn ---
+
+    @Test
+    fun `sti med kontrolltegn eller linjeskift er OTHER`() {
+        listOf("\n", "\r", "\t", "\u0000", "\u001f", "\u007f", "\u0085", "\u2028", "\u2029").forEach { c ->
+            classify(src("src/main/kotlin/A${c}B.kt", 1, 1), cfg) shouldBe FileClass.OTHER
+            classify(src("src/test/kotlin/A${c}Test.kt", 1, 0, FileStatus.ADDED), cfg) shouldBe FileClass.OTHER
+            classify(src("src/main/kotlin/A.kt", 0, 0, FileStatus.RENAMED, prev = "src/main/kotlin/A${c}.kt"), cfg) shouldBe
+                FileClass.OTHER
+        }
+    }
 }

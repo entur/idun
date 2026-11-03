@@ -1,5 +1,6 @@
 package org.entur.idun.review
 
+import org.entur.idun.rules.CONTROL_CHARACTERS
 import java.util.UUID
 
 /** Spørsmålene fra spec-ens sjekkliste («Trinn 2»), ordrett. En per [ChecklistItem]. */
@@ -60,7 +61,7 @@ internal fun buildPrompt(
         buildString {
             appendLine("Merke for innholdet i denne meldingen: $nonce")
             appendLine()
-            appendLine("PR-tittel: ${input.title.replace('\n', ' ')}")
+            appendLine("PR-tittel: ${input.title.replace(CONTROL_CHARACTERS, " ")}")
             input.files.forEach { file ->
                 appendLine()
                 appendLine("##### Fil: ${file.path}")

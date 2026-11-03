@@ -56,4 +56,12 @@ class PromptTest {
         val added = ReviewInput("t", listOf(ReviewFile("New.kt", "p", before = null, after = "x")))
         buildPrompt(added).second shouldContain "(filen fantes ikke)"
     }
+
+    @Test
+    fun `tittelen får ingen kontrolltegn eller linjeskift`() {
+        val title = "refactor: a\rb\u2028c\u2029d\u0085e\u0000f\tg\u007fh\ni"
+        val (_, user) = buildPrompt(ReviewInput(title, emptyList()), nonce = "n0nce")
+        val line = user.lines().single { it.startsWith("PR-tittel: ") }
+        line shouldBe "PR-tittel: refactor: a b c d e f g h i"
+    }
 }
