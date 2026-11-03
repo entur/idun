@@ -6,12 +6,14 @@ enturLogging = "7.1.4"
 junit = "5.14.4"
 kotest = "6.2.6"
 mockk = "1.14.11"
+kaml = "0.104.0"
 
 [libraries]
 ktor-server-core = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation-jvm", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json-jvm", version.ref = "ktor" }
+kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 entur-logback-logstash-encoder-gcp = { module = "no.entur.logging.cloud:logback-logstash-encoder-gcp", version.ref = "enturLogging" }
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
