@@ -63,6 +63,16 @@ class Reporter(
         gh.approve(repo, number, sha, approvalBody(sha))
     }
 
+    /** `true` når Idun allerede har en gjeldende (`APPROVED`) godkjenning med markør for [sha]. */
+    suspend fun hasApproval(
+        repo: RepoRef,
+        number: Int,
+        sha: String,
+    ): Boolean =
+        gh.reviews(repo, number).any {
+            it.login == appLogin && it.state == "APPROVED" && APPROVAL_MARKER.find(it.body)?.groupValues?.get(1) == sha
+        }
+
     /**
      * Trekker tilbake Iduns egne `APPROVED`-reviews hvis markør-sha ikke er [keepSha]. En godkjenning uten
      * lesbar markør regnes som «ikke keepSha» og trekkes tilbake (fail closed).
