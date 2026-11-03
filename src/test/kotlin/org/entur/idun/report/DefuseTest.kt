@@ -49,4 +49,21 @@ class DefuseTest {
         defuse("x".repeat(50), 10).length shouldBe 10
         defuse("<".repeat(50), 10).length shouldBe 10
     }
+
+    @Test
+    fun `defuse fjerner lenker uansett skjema og store bokstaver`() {
+        for (link in listOf("HTTPS://x.example", "Http://x.example", "ftp://x.example", "www.x.example/a", "WWW.x.example")) {
+            val out = defuse("se $link her")
+            out shouldNotContain "x.example"
+            out shouldNotContain "://"
+            out.lowercase() shouldNotContain "www."
+            out shouldContain "(lenke fjernet)"
+        }
+    }
+
+    @Test
+    fun `defuse lar vanlig tekst med punktum vaere uendret`() {
+        defuse("kall foo.bar()") shouldBe "kall foo.bar()"
+        defuse("se README.md og a.b.c") shouldBe "se README.md og a.b.c"
+    }
 }
