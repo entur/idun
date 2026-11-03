@@ -229,4 +229,18 @@ class FileRulesTest {
         evaluateFiles(listOf(src(launcher, 1, 0, FileStatus.ADDED)), emptyMap(), cfg).reasons.single().code shouldBe
             ReasonCode.PROTECTED_PATH
     }
+
+    // --- byggelogikk (I5) ---
+
+    @Test
+    fun `Kotlin i buildSrc og build-logic er beskyttet, ikke kilde`() {
+        listOf(
+            "buildSrc/src/main/kotlin/Conventions.kt",
+            "tools/buildSrc/src/main/kotlin/Conventions.kt",
+            "build-logic/src/main/kotlin/Conventions.kt",
+            "gradle-plugins/build-logic/convention/src/main/kotlin/Conventions.kt",
+        ).forEach { path ->
+            classify(src(path, 1, 1), cfg) shouldBe FileClass.PROTECTED
+        }
+    }
 }

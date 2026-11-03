@@ -58,6 +58,11 @@ data class IdunConfig(
                         "gradle/**",
                         "gradlew*",
                         "settings.gradle*",
+                        // Byggelogikk er Kotlin under src/main, men endrer bygget, ikke programmet.
+                        "buildSrc/**",
+                        "**/buildSrc/**",
+                        "build-logic/**",
+                        "**/build-logic/**",
                         "Dockerfile",
                         "compose.yaml",
                         ".github/**",
