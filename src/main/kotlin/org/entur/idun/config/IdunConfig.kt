@@ -61,6 +61,9 @@ data class IdunConfig(
                         "Dockerfile",
                         "compose.yaml",
                         ".github/**",
+                        // Kan slå av eller filtrere bort eksisterende tester.
+                        "**/META-INF/services/**",
+                        "**/junit-platform.properties",
                     ).map(::Glob),
                 protectedContent =
                     listOf(

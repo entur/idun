@@ -16,6 +16,9 @@ data class ChangedFile(
 
 enum class FileClass { PROTECTED, EXISTING_TEST, NEW_TEST, SOURCE, OTHER }
 
+/** Filendelsene en ny fil under en teststi må ha for å telle som ny test. */
+private val TEST_CODE_SUFFIXES = listOf(".kt", ".java")
+
 /** Filinnhold før og etter endringen. `null` betyr at filen ikke fantes på den siden. */
 data class FileContents(
     val before: String?,
@@ -47,7 +50,13 @@ fun classify(
     if (paths.any { config.looksLikeTestAndSource(it) }) return FileClass.OTHER
 
     if (config.isTest(file.path)) {
-        return if (file.status == FileStatus.ADDED) FileClass.NEW_TEST else FileClass.EXISTING_TEST
+        return when {
+            file.status != FileStatus.ADDED -> FileClass.EXISTING_TEST
+            // Bare kode er en ny test. Andre nye filer under teststier (ressurser, `META-INF/services`) kan endre
+            // hvilke tester som kjører, og må ses av et menneske.
+            TEST_CODE_SUFFIXES.any { file.path.endsWith(it) } -> FileClass.NEW_TEST
+            else -> FileClass.OTHER
+        }
     }
     // Flyttet ut av en teststi: aldri en ny test.
     if (file.status == FileStatus.RENAMED && file.previousPath != null && config.isTest(file.previousPath)) {

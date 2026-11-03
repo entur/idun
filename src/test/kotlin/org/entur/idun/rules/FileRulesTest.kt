@@ -209,4 +209,24 @@ class FileRulesTest {
         val r = evaluateFiles(listOf(src(kotlinDao, 4, 2)), mapOf(kotlinDao to FileContents("", "")), narrowed)
         r.reasons.single().detail shouldBe "6 av høyst 5 linjer"
     }
+
+    // --- bare Kotlin/Java teller som ny test (I4) ---
+
+    @Test
+    fun `ny ikke-kodefil under teststi er OTHER`() {
+        classify(src("src/test/resources/fixture.json", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.OTHER
+        classify(src("src/test/kotlin/Helper.kts", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.OTHER
+        classify(src("src/test/kotlin/ATest.kt", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.NEW_TEST
+        classify(src("src/test/java/ATest.java", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.NEW_TEST
+    }
+
+    @Test
+    fun `filer som kan slå av tester er beskyttet`() {
+        val launcher = "src/test/resources/META-INF/services/org.junit.platform.launcher.PostDiscoveryFilter"
+        classify(src(launcher, 1, 0, FileStatus.ADDED), cfg) shouldBe FileClass.PROTECTED
+        classify(src("src/test/resources/junit-platform.properties", 1, 0, FileStatus.ADDED), cfg) shouldBe FileClass.PROTECTED
+        classify(src("src/main/resources/META-INF/services/x.Y", 1, 0), cfg) shouldBe FileClass.PROTECTED
+        evaluateFiles(listOf(src(launcher, 1, 0, FileStatus.ADDED)), emptyMap(), cfg).reasons.single().code shouldBe
+            ReasonCode.PROTECTED_PATH
+    }
 }

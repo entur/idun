@@ -18,7 +18,7 @@ class IdunConfigTest {
     fun `standardverdier`() {
         val d = IdunConfig.DEFAULT
         d.maxChangedLines shouldBe 50
-        d.protectedPaths.size shouldBe 18
+        d.protectedPaths.size shouldBe 20
         listOf("specs/x.yaml", "api/openapi/a.yaml", "a.openapi.yaml", "src/main/resources/db/migration/V1.sql", "q.sql",
             "src/main/resources/application-prod.yml", "x.properties", "helm/values.yaml", ".entur/a", "sub/build.gradle.kts",
             "gradle/libs.versions.toml", "gradlew.bat", "settings.gradle", "Dockerfile", "compose.yaml", ".github/workflows/a.yml")
