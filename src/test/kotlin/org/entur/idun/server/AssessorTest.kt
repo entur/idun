@@ -552,7 +552,7 @@ class AssessorTest {
             gh.comments += IssueComment(55, "en-person", "$COMMENT_MARKER kopiert")
             gh.comments += IssueComment(56, APP_LOGIN, "$COMMENT_MARKER\n**Idun**: trygg")
             gh.reactions[56] = Reactions(thumbsUp = 2, thumbsDown = 1)
-            assess()
+            assessor.onPullRequest(1, REPO, 7, "closed")
             val line = log.single("idun.feedback")
             line shouldContain "repo=entur/idun-sandbox"
             line shouldContain "pr=7"
@@ -563,6 +563,40 @@ class AssessorTest {
             line shouldContain "thumbsDown=1"
             gh.writes.shouldBeEmpty()
             reviewer.calls shouldBe 0
+        }
+
+    @Test
+    fun `feedback logges bare fra pull_request closed, ikke fra andre hendelser på en lukket PR`() =
+        runBlocking<Unit> {
+            gh.pr = gh.pr.copy(state = "closed", merged = true)
+            gh.ownRuns[HEAD] = CheckRunWrite("completed", "success", "Trygg refaktorering", "x", "safe:0123456789abcdef")
+            gh.comments += IssueComment(56, APP_LOGIN, "$COMMENT_MARKER\n**Idun**: trygg")
+            gh.prsForCommit[HEAD] = listOf(7)
+            assessor.onCommit(installationId = 1, repo = REPO, sha = HEAD)
+            assessor.onPullRequest(1, REPO, 7, "edited")
+            log.messages.none { it.startsWith("idun.feedback") } shouldBe true
+            gh.writes.shouldBeEmpty()
+            reviewer.calls shouldBe 0
+        }
+
+    @Test
+    fun `ikke-refactor med egen check på commiten, men uten egen kommentar på PR-en, skriver ingenting`() =
+        runBlocking<Unit> {
+            // Checken hører til commiten: en annen PR med samme head kan ha fått den.
+            gh.ownRuns[HEAD] = CheckRunWrite("completed", "success", "Trygg refaktorering", "x", "safe:0123456789abcdef")
+            gh.pr = gh.pr.copy(title = "feat: noe nytt")
+            assess()
+            gh.writes.shouldBeEmpty()
+            gh.ownRuns.getValue(HEAD).externalId shouldBe "safe:0123456789abcdef"
+        }
+
+    @Test
+    fun `ikke-refactor uten egen kommentar trekker likevel en egen godkjenning på PR-en`() =
+        runBlocking<Unit> {
+            gh.reviews += Review(9, APP_LOGIN, "APPROVED", "ok ${approvalOf(HEAD)}", commitId = HEAD)
+            gh.pr = gh.pr.copy(title = "feat: noe nytt")
+            assess()
+            gh.writes shouldContainExactly listOf("dismissReview 9")
         }
 
     @Test

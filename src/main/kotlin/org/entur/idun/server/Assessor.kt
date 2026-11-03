@@ -140,10 +140,10 @@ class Assessor(
         action: String,
     ) {
         log.debug("idun.event repo={} pr={} action={}", repo.slug(), number, action)
-        assess(installationId, repo, number)
+        assess(installationId, repo, number, action)
     }
 
-    /** For `check_suite` og `status`: vurderer alle PR-er som har [sha]. */
+    /** For `check_suite` og `status`: vurderer alle åpne PR-er som har [sha]. Lukkede PR-er hoppes over. */
     suspend fun onCommit(
         installationId: Long,
         repo: RepoRef,
@@ -159,13 +159,15 @@ class Assessor(
                 logError(repo, null, sha, e)
                 return
             }
-        for (number in numbers) assess(installationId, repo, number)
+        for (number in numbers) assess(installationId, repo, number, action = null)
     }
 
+    /** [action] er `pull_request`-handlingen, eller `null` for `check_suite` og `status`. */
     private suspend fun assess(
         installationId: Long,
         repo: RepoRef,
         number: Int,
+        action: String?,
     ) = locks.withLock(repo, number) {
         val mode = modeOf(repo)
         if (mode == Mode.OFF) return@withLock
@@ -175,7 +177,7 @@ class Assessor(
         try {
             val client = github.forInstallation(installationId)
             ctx = Context(client, Reporter(client, appLogin), repo, number, mode)
-            run(ctx, progress)
+            run(ctx, progress, action)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -216,11 +218,13 @@ class Assessor(
     private suspend fun run(
         ctx: Context,
         progress: Progress,
+        action: String?,
     ) {
         val pr = ctx.gh.pullRequest(ctx.repo, ctx.number)
         progress.prRead = true
         if (pr.state == "closed") {
-            logFeedback(ctx, pr)
+            // Én feedback-linje per lukking: ikke fra `check_suite`, `status` eller `edited` på en lukket PR.
+            if (action == "closed") logFeedback(ctx, pr)
             return
         }
         val title = parseTitle(pr.title)
@@ -236,7 +240,12 @@ class Assessor(
         }
     }
 
-    /** Tittelen er ikke `refactor` (lenger). Har Idun vurdert PR-en før, ryddes godkjenning, label og kommentar. */
+    /**
+     * Tittelen er ikke `refactor` (lenger). Har Idun vurdert akkurat denne PR-en før (egen kommentar på PR-en),
+     * ryddes godkjenning, label og kommentar, og checken settes til «ikke lenger refactor». En egen check på commiten
+     * alene er ikke nok: checken hører til commiten og kan komme fra en annen PR med samme head. En egen
+     * godkjenning på PR-en trekkes uansett.
+     */
     private suspend fun leave(
         ctx: Context,
         pr: PullRequest,
@@ -244,11 +253,14 @@ class Assessor(
     ) {
         // Feiler lesingen under, vet vi ikke om Idun har godkjent før: rydd godkjenning og label (uten feil-check).
         progress.cleanOnError = true
-        val ownRun = ownRun(ctx.gh.checkRuns(ctx.repo, pr.headSha))
         val comment = ownComment(ctx)
-        if (ownRun == null && comment == null) return
+        if (comment == null) {
+            ctx.reporter.dismissApprovals(ctx.repo, ctx.number, keepSha = null)
+            return
+        }
+        val ownRun = ownRun(ctx.gh.checkRuns(ctx.repo, pr.headSha))
         // Allerede ryddet for denne commiten (eller kommentaren sier det, og det finnes ingen check å oppdatere).
-        if (ownRun?.externalId == NOT_REFACTOR_ID || (ownRun == null && comment?.body == NOT_REFACTOR_ANY_MORE)) return
+        if (ownRun?.externalId == NOT_REFACTOR_ID || (ownRun == null && comment.body == NOT_REFACTOR_ANY_MORE)) return
 
         progress.engagedSha = pr.headSha
         ctx.reporter.dismissApprovals(ctx.repo, ctx.number, keepSha = null)
