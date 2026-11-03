@@ -372,6 +372,84 @@ class AssessorTest {
         }
 
     @Test
+    fun `tittel endret mens modellen svarer gir ingen skriving`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            reviewer.beforeAnswer = { gh.pr = gh.pr.copy(title = "refactor: something else") }
+            assess()
+            reviewer.calls shouldBe 1
+            gh.ownRuns.getValue(HEAD).status shouldBe "in_progress"
+            gh.reviews.shouldBeEmpty()
+            gh.labels.shouldBeEmpty()
+            gh.comments.shouldBeEmpty()
+        }
+
+    @Test
+    fun `ny base med annen merge-base mens modellen svarer gir ingen skriving`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            reviewer.beforeAnswer = {
+                gh.pr = gh.pr.copy(baseSha = "base2")
+                gh.mergeBaseSha = "mergebase2"
+            }
+            assess()
+            gh.ownRuns.getValue(HEAD).status shouldBe "in_progress"
+            gh.reviews.shouldBeEmpty()
+            gh.labels.shouldBeEmpty()
+            gh.comments.shouldBeEmpty()
+        }
+
+    @Test
+    fun `main som flytter seg mens modellen svarer stopper ikke resultatet`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            reviewer.beforeAnswer = { gh.pr = gh.pr.copy(baseSha = "base3") }
+            assess()
+            gh.ownRuns.getValue(HEAD).conclusion shouldBe "success"
+            gh.reviews.single().state shouldBe "APPROVED"
+            gh.labels shouldContainExactly setOf(APPROVED_LABEL)
+        }
+
+    @Test
+    fun `etter ny base er gammel godkjenning og label borte mens modellen kjører`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            assess()
+            gh.reviews.single().state shouldBe "APPROVED"
+
+            gh.pr = gh.pr.copy(baseSha = "base2")
+            gh.mergeBaseSha = "mergebase2"
+            gh.contents[FIXTURE_PATH to "mergebase2"] = "val a = 1\nval x = 2\n"
+            var statesDuringReview: List<String>? = null
+            var labelsDuringReview: Set<String>? = null
+            reviewer.beforeAnswer = {
+                statesDuringReview = gh.reviews.map { it.state }
+                labelsDuringReview = gh.labels.toSet()
+            }
+            assess()
+            reviewer.calls shouldBe 2
+            statesDuringReview shouldBe listOf("DISMISSED")
+            labelsDuringReview shouldBe emptySet()
+            // Etterpå er den nye vurderingen skrevet og godkjent på nytt.
+            gh.reviews.map { it.state } shouldContainExactly listOf("DISMISSED", "APPROVED")
+            gh.labels shouldContainExactly setOf(APPROVED_LABEL)
+        }
+
+    @Test
+    fun `feil mens tittelen ikke lenger er refactor fjerner label og godkjenning`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            assess()
+            gh.labels shouldContainExactly setOf(APPROVED_LABEL)
+            gh.pr = gh.pr.copy(title = "feat: likevel ny oppførsel")
+            gh.onCall = { if (it == "comments") throw GitHubApiException(502, "Bad gateway") }
+            assess()
+            gh.reviews.single().state shouldBe "DISMISSED"
+            gh.labels.shouldBeEmpty()
+            log.single("idun.error") shouldContain "status=502"
+        }
+
+    @Test
     fun `feil etter tidligere godkjenning fjerner label og godkjenning`() =
         runBlocking<Unit> {
             mode = Mode.APPROVE

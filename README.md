@@ -23,9 +23,11 @@ Modusen settes per repo i Iduns egen konfigurasjon: `repo_modes` i `terraform/en
 | `advise` | Check, kommentar og label, men ingen godkjenning |
 | `approve` | Som `advise`, og godkjenner PR-er som vurderes som trygge |
 
+Settes et repo til `off`, blir en godkjenning Idun allerede har gitt på gjeldende commit stående. Fjern den for hånd, eller push en ny commit.
+
 ## Hva du ser på en PR
 
-- **Check run `idun/refactor`:** `success` når PR-en er vurdert som trygg, `neutral` når den trenger et menneske, og `in_progress` mens Idun venter på CI eller vurderer. Den blir aldri `failure`, så den blokkerer aldri merge.
+- **Check run `idun/refactor`:** `success` når PR-en er vurdert som trygg, `neutral` når den trenger et menneske, og `in_progress` mens Idun venter på CI eller vurderer. Den blir aldri `failure`, så den blokkerer aldri merge. Checken hører til commiten, ikke PR-en, så to PR-er med samme head-commit deler den.
 - **Én kommentar**, som redigeres i stedet for at det skrives nye. Den har utfallet, hvilke regler som feilet eller modellens funn, og hva et menneske bør se på.
 - **Label:** `idun:approved` eller `idun:needs-human`, aldri begge.
 - **Godkjenning** (bare i `approve`): en review med `APPROVE` på akkurat den commiten som ble vurdert. En ny push trekker godkjenningen tilbake, og Idun vurderer den nye commiten fra bunnen. Endres tittelen bort fra `refactor`, trekkes godkjenningen tilbake og labelen fjernes.

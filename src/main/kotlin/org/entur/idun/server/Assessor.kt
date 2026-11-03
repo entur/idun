@@ -109,6 +109,9 @@ class Assessor(
 
         /** Commiten en feil-check kan skrives på. Satt først når Idun faktisk har noe å si om PR-en. */
         var engagedSha: String? = null
+
+        /** Godkjenning og label skal ryddes ved feil, selv uten [engagedSha] (feil under oppryddingen i `leave`). */
+        var cleanOnError = false
     }
 
     /** Det som kommer ut av trinnene før rapporteringen. */
@@ -118,11 +121,14 @@ class Assessor(
             val outcome: Outcome,
             val costUsd: Double = 0.0,
             val fingerprint: String? = null,
+            /** Merge-basen vurderingen bygde på, når den ble hentet. */
+            val mergeBase: String? = null,
         ) : Assessment
 
         /** Egen ferdig check med samme fingeravtrykk: modellen kalles ikke på nytt. */
         data class Reused(
             val safe: Boolean,
+            val mergeBase: String,
         ) : Assessment
     }
 
@@ -186,7 +192,7 @@ class Assessor(
         progress: Progress,
     ) {
         val sha = progress.engagedSha
-        if (sha == null && progress.prRead) return
+        if (sha == null && progress.prRead && !progress.cleanOnError) return
         bestEffort(ctx, sha) { ctx.reporter.dismissApprovals(ctx.repo, ctx.number, keepSha = null) }
         bestEffort(ctx, sha) { ctx.reporter.setLabel(ctx.repo, ctx.number, null) }
         if (sha != null) bestEffort(ctx, sha) { ctx.gh.upsertCheckRun(ctx.repo, sha, CHECK_NAME, ERROR_CHECK) }
@@ -235,6 +241,8 @@ class Assessor(
         pr: PullRequest,
         progress: Progress,
     ) {
+        // Feiler lesingen under, vet vi ikke om Idun har godkjent før: rydd godkjenning og label (uten feil-check).
+        progress.cleanOnError = true
         val ownRun = ownRun(ctx.gh.checkRuns(ctx.repo, pr.headSha))
         val comment = ownComment(ctx)
         if (ownRun == null && comment == null) return
@@ -277,7 +285,7 @@ class Assessor(
         val contents = sourceContents(ctx, pr, mergeBase, files, idunConfig)
         val rules = evaluateFiles(files, contents, idunConfig)
         // Den eneste veien til modellen.
-        decideBeforeModel(ctx.mode, pr, title, ci, config, rules)?.let { return Assessment.Fresh(it) }
+        decideBeforeModel(ctx.mode, pr, title, ci, config, rules)?.let { return Assessment.Fresh(it, mergeBase = mergeBase) }
 
         val input =
             ReviewInput(
@@ -292,18 +300,21 @@ class Assessor(
         ownRun(runs)?.let { run ->
             when {
                 run.status != "completed" -> Unit
-                run.externalId == "$SAFE_ID:$fingerprint" && run.conclusion == "success" -> return Assessment.Reused(safe = true)
-                run.externalId == "$NEEDS_HUMAN_ID:$fingerprint" && run.conclusion == "neutral" -> return Assessment.Reused(safe = false)
+                run.externalId == "$SAFE_ID:$fingerprint" && run.conclusion == "success" -> return Assessment.Reused(safe = true, mergeBase)
+                run.externalId == "$NEEDS_HUMAN_ID:$fingerprint" && run.conclusion == "neutral" -> return Assessment.Reused(safe = false, mergeBase)
             }
         }
 
+        // Modellen har ikke godtatt denne diffen (ny base eller tittel på samme head): ingen godkjenning imens.
+        ctx.reporter.dismissApprovals(repo, ctx.number, keepSha = null)
+        ctx.reporter.setLabel(repo, ctx.number, null)
         gh.upsertCheckRun(repo, pr.headSha, CHECK_NAME, ASSESSING_CHECK)
         val result = reviewer.review(input)
         val outcome = decideAfterReview(result, input)
         // En feilet modell (timeout, budsjett, ugyldig svar) gjenbrukes ikke: neste hendelse prøver igjen.
         return when (result) {
-            is ReviewResult.Answered -> Assessment.Fresh(outcome, result.costUsd, fingerprint)
-            is ReviewResult.Failed -> Assessment.Fresh(outcome)
+            is ReviewResult.Answered -> Assessment.Fresh(outcome, result.costUsd, fingerprint, mergeBase)
+            is ReviewResult.Failed -> Assessment.Fresh(outcome, mergeBase = mergeBase)
         }
     }
 
@@ -338,14 +349,23 @@ class Assessor(
         return contents
     }
 
-    /** Har head flyttet seg, får den nye commiten sin egen hendelse. Da skrives ingenting for den gamle. */
-    private suspend fun headMoved(
+    /**
+     * Er PR-en fortsatt det som ble vurdert? Head og tittel må være like, og merge-basen (når vurderingen brukte den)
+     * må være lik. Rå `baseSha` sammenlignes ikke: den flytter seg hver gang main gjør det, mens diffen ikke endres.
+     * Er noe endret, skrives ingenting; `synchronize`/`edited` følger.
+     */
+    private suspend fun stillReviewed(
         ctx: Context,
-        sha: String,
+        reviewed: PullRequest,
+        mergeBase: String?,
     ): Boolean {
-        val moved = ctx.gh.pullRequest(ctx.repo, ctx.number).headSha != sha
-        if (moved) log.info("idun.stale repo={} pr={} sha={}", ctx.repo.slug(), ctx.number, sha)
-        return moved
+        val now = ctx.gh.pullRequest(ctx.repo, ctx.number)
+        val same =
+            now.headSha == reviewed.headSha &&
+                now.title == reviewed.title &&
+                (mergeBase == null || ctx.gh.mergeBase(ctx.repo, now.baseSha, now.headSha) == mergeBase)
+        if (!same) log.info("idun.stale repo={} pr={} sha={}", ctx.repo.slug(), ctx.number, reviewed.headSha)
+        return same
     }
 
     /** Godkjenningen står bare når utfallet er `Safe` i `APPROVE`. Alt annet trekker den, også `Safe` i advise. */
@@ -363,7 +383,7 @@ class Assessor(
     ) {
         val outcome = assessment.outcome
         val sha = pr.headSha
-        if (headMoved(ctx, sha)) return
+        if (!stillReviewed(ctx, pr, assessment.mergeBase)) return
         // Ignore kan ikke komme hit (modus og tittel er sjekket), men skal aldri rapporteres.
         if (outcome is Outcome.Ignore) return
 
@@ -391,7 +411,7 @@ class Assessor(
         pr: PullRequest,
         assessment: Assessment.Reused,
     ) {
-        if (headMoved(ctx, pr.headSha)) return
+        if (!stillReviewed(ctx, pr, assessment.mergeBase)) return
         dismissUnlessApproving(ctx, assessment.safe)
         ctx.reporter.setLabel(ctx.repo, ctx.number, if (assessment.safe) APPROVED_LABEL else NEEDS_HUMAN_LABEL)
         if (assessment.safe) approveIfAllowed(ctx, pr.headSha)
