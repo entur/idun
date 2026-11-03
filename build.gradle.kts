@@ -31,6 +31,7 @@ dependencies {
     implementation(libs.bouncycastle.bcpkix)
     implementation(libs.kaml)
     implementation(libs.google.genai)
+    implementation(libs.java.diff.utils)
     implementation(libs.logback.classic)
     implementation(libs.entur.logback.logstash.encoder.gcp)
 
@@ -44,4 +45,13 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// Kjører kanarifuglene mot den ekte modellen. Koster penger, så den er bevisst ikke koblet til `test` eller `check`.
+tasks.register<JavaExec>("eval") {
+    group = "verification"
+    description = "Kjører regler og Gemini-review på kanarifuglene i eval/canaries og feiler hvis en forventning brytes."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "org.entur.idun.eval.EvalMainKt"
+    workingDir = projectDir
 }

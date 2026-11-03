@@ -1,0 +1,1 @@
+{"title": "refactor: extract applyDiscount from FareCalculator", "expected": "safe"}
