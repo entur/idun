@@ -66,11 +66,13 @@ Idun kjører på Cloud Run i `ent-idun-prd`. Det finnes bare prd: ingen dev-app 
 |---|---|---|
 | Merge til `main` | `release.yml` | Release Please åpner eller oppdaterer release-PR-en. Ingenting deployes |
 | Release-PR merget | `release.yml` → `deploy.yml` | Bygger, skanner og pusher `eu.gcr.io/entur-system-1287/idun:<versjon>`, kjører `terraform apply` |
-| Manuell kjøring av Release på `main` | `release.yml` → `deploy.yml` | Kjører Terraform på nytt for den gjeldende releasen, uten å bygge. Bruk den etter en mislykket apply. En kjøring fra en annen gren deployer ingenting |
+| Manuell kjøring av Release på `main` | `release.yml` → `deploy.yml` | Kjører `terraform apply` med Terraform fra `main` HEAD og imaget til den gjeldende releasen, uten å bygge. Bruk den etter en mislykket apply. En kjøring fra en annen gren deployer ingenting |
 
 - **Release-PR-ens plan er forhåndsvisningen.** Den bumper `version.txt`, så Terraform-planen viser den nye image-taggen og alle infrastrukturendringer siden forrige release.
 - **Rollback:** tilbakestill `version.txt` og lag en ny release.
 - **Infrastrukturendringer venter til neste release.** Bruk `fix:` for en Terraform-endring som skal ut alene, siden `chore:` ikke utløser en release.
+- **Endre `terraform/env/prd.tfvars` (for eksempel `repo_modes`) krever to merger:** først PR-en med `fix:`-tittel, deretter release-PR-en som Release Please da åpner eller oppdaterer. Endringen er ikke i prd før release-PR-en er merget.
+- **En manuell kjøring av Release bruker Terraform fra `main` HEAD**, ikke fra den forrige releasen. Alt som er merget til `main` siden forrige release, også tfvars og andre Terraform-endringer, blir applyet, mens imaget fortsatt er den gjeldende releasen.
 
 ### GitHub-miljø (engangsoppsett)
 
@@ -93,8 +95,8 @@ Tjenesten deployes før noen hemmeligheter finnes. Terraform lager en plassholde
    openssl rand -hex 32 | tee /dev/tty | gcloud secrets versions add idun-github-webhook-secret --project $P --data-file=-
    ```
    Lim inn det utskrevne webhook-hemmeligheten i appen også.
-4. **Sett `github_app_id` og `github_app_slug`** i `terraform/env/prd.tfvars` og merge med en `fix:`-commit. Det lager en ny revisjon som leser de siste hemmelighetsversjonene. Instanser som starter senere gjør det samme, siden Cloud Run løser `latest` når en instans starter.
-5. **Aktiver webhooken** på appen og installer den på `entur/idun-sandbox` og `entur/products-api`. Modusen per repo står i `repo_modes` i `terraform/env/prd.tfvars` (`entur/idun-sandbox=approve` for testing; `entur/products-api=advise` legges til senere) og endres med en PR og en release. Et repo som ikke er listet, er `off`.
+4. **Sett `github_app_id` og `github_app_slug`** i `terraform/env/prd.tfvars`, merge PR-en med en `fix:`-tittel og merge deretter release-PR-en. Det lager en ny revisjon som leser de siste hemmelighetsversjonene. Instanser som starter senere gjør det samme, siden Cloud Run løser `latest` når en instans starter.
+5. **Aktiver webhooken** på appen og installer den på `entur/idun-sandbox` og `entur/products-api`. Modusen per repo står i `repo_modes` i `terraform/env/prd.tfvars` (`entur/idun-sandbox=approve` for testing; `entur/products-api=advise` legges til senere) og endres med en `fix:`-PR og deretter release-PR-en. Et repo som ikke er listet, er `off`.
 6. **Verifiser** at en `refactor:`-PR i sandbox-repoet får check, kommentar og label.
 
 Før du bytter hemmelighetene: `GEMINI_PRICE_IN_PER_MTOK` og `GEMINI_PRICE_OUT_PER_MTOK` i `terraform/env/prd.tfvars` må bekreftes mot gjeldende Vertex-listepriser. Idun regner kostnaden mot det daglige taket ut fra dem.
