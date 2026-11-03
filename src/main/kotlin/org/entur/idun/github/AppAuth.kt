@@ -5,6 +5,7 @@ import com.auth0.jwt.algorithms.Algorithm
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.url
@@ -26,6 +27,12 @@ import java.security.interfaces.RSAPublicKey
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+
+/** GitHub-appen slik GitHub selv beskriver den. */
+data class AppIdentity(
+    val id: Long,
+    val slug: String,
+)
 
 private val JWT_BACKDATE = Duration.ofSeconds(60)
 private val JWT_LIFETIME = Duration.ofMinutes(9)
@@ -87,6 +94,28 @@ class AppAuth(
             cache[installationId] = fresh
             fresh.token
         }
+
+    /** Appen JWT-en tilhører, fra `GET /app`. Kaster ved alle ikke-2xx-svar. */
+    suspend fun app(): AppIdentity {
+        val response: HttpResponse =
+            client.get {
+                url("$baseUrl/app")
+                bearerAuth(jwt())
+                header("Accept", GITHUB_ACCEPT)
+                header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+            }
+        if (!response.status.isSuccess()) {
+            throw GitHubApiException(response.status.value, "GET /app feilet med ${response.status.value}: ${response.bodyText()}")
+        }
+        val dto = response.body<AppDto>()
+        return AppIdentity(dto.id, dto.slug)
+    }
+
+    @Serializable
+    private class AppDto(
+        val id: Long,
+        val slug: String,
+    )
 
     @Serializable
     private class AccessTokenDto(

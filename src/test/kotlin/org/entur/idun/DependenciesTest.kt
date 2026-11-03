@@ -1,10 +1,20 @@
 package org.entur.idun
 
 import io.kotest.matchers.shouldBe
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.HttpRequestData
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import kotlinx.coroutines.runBlocking
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter
+import org.entur.idun.github.AppAuth
+import org.entur.idun.github.githubHttpClient
 import org.junit.jupiter.api.Test
 import java.io.StringWriter
 import java.security.KeyPairGenerator
+import java.time.Clock
 
 class DependenciesTest {
     private val pem: String =
@@ -73,4 +83,50 @@ class DependenciesTest {
     fun `toString viser ikke webhook-hemmeligheten`() {
         Dependencies(webhookSecret = "s3cret").toString().contains("s3cret") shouldBe false
     }
+
+    // --- identiteten kommer fra GET /app (I1) ---
+
+    private val appRequests = mutableListOf<HttpRequestData>()
+
+    private fun appApi(
+        body: String,
+        status: HttpStatusCode = HttpStatusCode.OK,
+    ) = githubHttpClient(
+        MockEngine { req ->
+            appRequests += req
+            respond(body, status, headersOf(HttpHeaders.ContentType, "application/json"))
+        },
+    )
+
+    @Test
+    fun `GET app som feiler gir redusert modus`() {
+        Dependencies.fromEnvironment(complete, http = appApi("""{"message":"Bad credentials"}""", HttpStatusCode.Unauthorized))
+            .degraded shouldBe true
+        appRequests.single().url.encodedPath shouldBe "/app"
+        appRequests.single().headers[HttpHeaders.Authorization]!!.startsWith("Bearer ") shouldBe true
+    }
+
+    @Test
+    fun `slug eller id som ikke stemmer med GET app gir redusert modus`() {
+        Dependencies.fromEnvironment(complete, http = appApi("""{"id":123,"slug":"noen-andre"}""")).degraded shouldBe true
+        Dependencies.fromEnvironment(complete, http = appApi("""{"id":999,"slug":"entur-idun"}""")).degraded shouldBe true
+        appRequests.size shouldBe 2
+    }
+
+    @Test
+    fun `GET app som stemmer gir full modus`() {
+        Dependencies.fromEnvironment(complete, http = appApi("""{"id":123,"slug":"entur-idun"}""")).let {
+            it.degraded shouldBe false
+            it.ownAppId shouldBe 123
+        }
+    }
+
+    @Test
+    fun `identiteten tas fra GET app`() =
+        runBlocking<Unit> {
+            val auth = AppAuth("123", pem, Clock.systemUTC(), appApi("""{"id":123,"slug":"entur-idun","name":"Idun"}"""))
+            verifyAppIdentity(auth, appId = 123, slug = "entur-idun") shouldBe AppIdentityCheck.Verified(123, "entur-idun[bot]")
+            verifyAppIdentity(auth, appId = 123, slug = "annen") shouldBe
+                AppIdentityCheck.Rejected("GITHUB_APP_SLUG (annen) stemmer ikke med GET /app (entur-idun)")
+        }
 }

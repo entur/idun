@@ -31,8 +31,8 @@ Idun er en vanlig HTTP-server med `GET /healthz` og webhook-endepunktet. Den les
 
 | Variabel | Påkrevd | Hva |
 |---|---|---|
-| `GITHUB_APP_ID` | ja | ID-en til GitHub-appen |
-| `GITHUB_APP_SLUG` | ja | slug-en til GitHub-appen |
+| `GITHUB_APP_ID` | ja | ID-en til GitHub-appen. Må stemme med `GET /app`, ellers starter Idun i redusert modus |
+| `GITHUB_APP_SLUG` | ja | slug-en til GitHub-appen. Må stemme med `GET /app`, ellers starter Idun i redusert modus |
 | `GITHUB_PRIVATE_KEY` | ja | privat nøkkel til appen (PEM) |
 | `GITHUB_WEBHOOK_SECRET` | ja | webhook-hemmeligheten |
 | `GCP_PROJECT` | ja | GCP-prosjektet Vertex AI kalles i, `ent-idun-prd` |
