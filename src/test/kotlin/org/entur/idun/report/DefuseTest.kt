@@ -66,4 +66,14 @@ class DefuseTest {
         defuse("kall foo.bar()") shouldBe "kall foo.bar()"
         defuse("se README.md og a.b.c") shouldBe "se README.md og a.b.c"
     }
+
+    @Test
+    fun `defuse fjerner lenker rett etter understrek eller siffer`() {
+        for (link in listOf("_https://x.example", "_www.x.example", "1https://x.example")) {
+            val out = defuse("see $link x")
+            out shouldNotContain "x.example"
+            out shouldNotContain "://"
+            out.lowercase() shouldNotContain "www."
+        }
+    }
 }
