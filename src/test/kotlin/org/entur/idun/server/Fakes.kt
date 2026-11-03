@@ -151,11 +151,6 @@ internal class FakeGitHub(
         return contents[path to ref]
     }
 
-    override suspend fun customProperty(
-        repo: RepoRef,
-        name: String,
-    ): String? = error("modusen skal ikke leses fra custom property")
-
     override suspend fun checkRuns(
         repo: RepoRef,
         sha: String,
@@ -256,11 +251,6 @@ internal class FakeGitHub(
         call("removeLabel")
         if (labels.remove(name)) write("removeLabel $name")
     }
-
-    override suspend fun labels(
-        repo: RepoRef,
-        number: Int,
-    ): List<String> = labels.toList().also { call("labels") }
 
     override suspend fun reviews(
         repo: RepoRef,

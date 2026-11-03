@@ -113,11 +113,6 @@ interface GitHub {
         ref: String,
     ): String?
 
-    suspend fun customProperty(
-        repo: RepoRef,
-        name: String,
-    ): String?
-
     suspend fun checkRuns(
         repo: RepoRef,
         sha: String,
@@ -188,11 +183,6 @@ interface GitHub {
         number: Int,
         name: String,
     )
-
-    suspend fun labels(
-        repo: RepoRef,
-        number: Int,
-    ): List<String>
 
     suspend fun reviews(
         repo: RepoRef,

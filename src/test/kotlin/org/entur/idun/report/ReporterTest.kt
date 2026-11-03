@@ -9,14 +9,11 @@ import io.mockk.coVerifyOrder
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.runBlocking
-import org.entur.idun.decide.Outcome
-import org.entur.idun.github.CheckRunWrite
 import org.entur.idun.github.GitHub
 import org.entur.idun.github.GitHubApiException
 import org.entur.idun.github.IssueComment
 import org.entur.idun.github.RepoRef
 import org.entur.idun.github.Review
-import org.entur.idun.review.validResponse
 import org.junit.jupiter.api.Test
 
 class ReporterTest {
@@ -30,16 +27,6 @@ class ReporterTest {
         sha: String?,
         state: String = "APPROVED",
     ) = Review(id, login, state, if (sha == null) "Godkjent" else "ok <!-- idun:approval sha=$sha -->")
-
-    @Test
-    fun `writeCheck skriver til egen check run med fast navn`() =
-        runBlocking<Unit> {
-            val written = slot<CheckRunWrite>()
-            coEvery { gh.upsertCheckRun(repo, "abc", "idun/refactor", capture(written)) } returns Unit
-            reporter.writeCheck(repo, "abc", Outcome.Safe(validResponse()))
-            coVerify(exactly = 1) { gh.upsertCheckRun(repo, "abc", "idun/refactor", any()) }
-            written.captured.conclusion shouldBe "success"
-        }
 
     @Test
     fun `dismissApprovals trekker bare egne godkjenninger av andre commits`() =

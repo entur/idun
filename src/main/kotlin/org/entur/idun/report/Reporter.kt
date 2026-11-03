@@ -1,7 +1,6 @@
 package org.entur.idun.report
 
 import kotlinx.coroutines.CancellationException
-import org.entur.idun.decide.Outcome
 import org.entur.idun.github.GitHub
 import org.entur.idun.github.GitHubApiException
 import org.entur.idun.github.RepoRef
@@ -27,14 +26,6 @@ class Reporter(
     private val gh: GitHub,
     private val appLogin: String,
 ) {
-    suspend fun writeCheck(
-        repo: RepoRef,
-        sha: String,
-        outcome: Outcome,
-    ) {
-        gh.upsertCheckRun(repo, sha, CHECK_NAME, renderCheck(outcome))
-    }
-
     /** Oppdaterer Iduns kommentar med markøren, ellers opprettes en ny. */
     suspend fun writeComment(
         repo: RepoRef,

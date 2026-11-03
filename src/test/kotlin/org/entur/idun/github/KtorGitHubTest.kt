@@ -169,7 +169,7 @@ class KtorGitHubTest {
                     seen = req
                     json("[]")
                 }
-            github.labels(repo, 1)
+            github.reviews(repo, 1)
             seen!!.headers[HttpHeaders.Authorization] shouldBe "Bearer tok"
             seen.headers[HttpHeaders.Accept] shouldBe "application/vnd.github+json"
             seen.headers["X-GitHub-Api-Version"] shouldBe "2022-11-28"
@@ -281,40 +281,6 @@ class KtorGitHubTest {
         val github = gh { json("""{"type":"file","encoding":"base64","content":"$b64"}""") }
         shouldThrow<Exception> { runBlocking { github.fileContent(repo, "x.bin", "sha") } }
     }
-
-    // --- custom properties ---
-
-    @Test
-    fun `customProperty plukker idun-mode`() =
-        runBlocking<Unit> {
-            val github =
-                gh { req ->
-                    req.url.encodedPath shouldBe "/repos/entur/products-api/properties/values"
-                    json("""[{"property_name":"team","value":"x"},{"property_name":"idun-mode","value":"auto"}]""")
-                }
-            github.customProperty(repo, "idun-mode") shouldBe "auto"
-        }
-
-    @Test
-    fun `customProperty gir null for manglende eller null-verdi`() =
-        runBlocking<Unit> {
-            gh { json("""[{"property_name":"team","value":"x"}]""") }.customProperty(repo, "idun-mode") shouldBe null
-            gh { json("""[{"property_name":"idun-mode","value":null}]""") }.customProperty(repo, "idun-mode") shouldBe null
-        }
-
-    @Test
-    fun `customProperty kaster paa feil og uventet verdiform`() {
-        shouldThrow<GitHubApiException> {
-            runBlocking { gh { json("{}", HttpStatusCode.NotFound) }.customProperty(repo, "idun-mode") }
-        }
-        shouldThrow<Exception> {
-            runBlocking<Unit> {
-                gh { json("""[{"property_name":"idun-mode","value":["a","b"]}]""") }.customProperty(repo, "idun-mode")
-            }
-        }
-    }
-
-    // --- checks og statuser ---
 
     @Test
     fun `checkRuns, checkSuites, statuses og workflowRuns mappes`() =
@@ -515,7 +481,7 @@ class KtorGitHubTest {
         }
 
     @Test
-    fun `addLabel, labels og removeLabel`() =
+    fun `addLabel og removeLabel`() =
         runBlocking<Unit> {
             var added: JsonObject? = null
             var deleted: String? = null
@@ -530,12 +496,11 @@ class KtorGitHubTest {
                             deleted = req.url.encodedPath
                             json("""[]""")
                         }
-                        else -> json("""[{"name":"a"},{"name":"b c"}]""")
+                        else -> error(req.url.toString())
                     }
                 }
             github.addLabel(repo, 5, "a")
             added!!["labels"].toString() shouldBe """["a"]"""
-            github.labels(repo, 5) shouldContainExactly listOf("a", "b c")
             github.removeLabel(repo, 5, "b c")
             deleted shouldBe "/repos/entur/products-api/issues/5/labels/b%20c"
         }

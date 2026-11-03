@@ -34,7 +34,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.putJsonObject
 import org.entur.idun.rules.ChangedFile
 import org.entur.idun.rules.FileStatus
 import java.nio.ByteBuffer
@@ -130,7 +129,7 @@ class KtorGitHub(
         head: String,
     ): String = call(HttpMethod.Get, repoUrl(repo, "compare", "$base...$head")).body<CompareDto>().mergeBaseCommit.sha
 
-    // --- innhold og egenskaper ---
+    // --- innhold ---
 
     override suspend fun fileContent(
         repo: RepoRef,
@@ -152,19 +151,6 @@ class KtorGitHub(
         check(encoding == "base64") { "contents/$path har encoding '$encoding', forventet 'base64'" }
         val content = obj.string("content") ?: error("contents/$path mangler content")
         return decodeUtf8(content, path)
-    }
-
-    override suspend fun customProperty(
-        repo: RepoRef,
-        name: String,
-    ): String? {
-        val values = call(HttpMethod.Get, repoUrl(repo, "properties", "values")).body<List<PropertyValueDto>>()
-        val value = values.firstOrNull { it.propertyName == name }?.value
-        return when {
-            value == null || value is JsonNull -> null
-            value is JsonPrimitive && value.isString -> value.content
-            else -> error("Egenskapen '$name' har uventet verdi: $value")
-        }
     }
 
     // --- checks og statuser ---
@@ -317,13 +303,6 @@ class KtorGitHub(
         if (response.status == HttpStatusCode.NotFound) return
         response.requireSuccess(HttpMethod.Delete, "issues/$number/labels")
     }
-
-    override suspend fun labels(
-        repo: RepoRef,
-        number: Int,
-    ): List<String> =
-        paged(repoUrl(repo, "issues", number, "labels", query = perPage())) { it.body<List<NameDto>>() }
-            .map { it.name }
 
     // --- reviews ---
 
@@ -557,11 +536,6 @@ private class IdDto(
 )
 
 @Serializable
-private class NameDto(
-    val name: String,
-)
-
-@Serializable
 private class CompareDto(
     @SerialName("merge_base_commit") val mergeBaseCommit: ShaDto,
 ) {
@@ -570,12 +544,6 @@ private class CompareDto(
         val sha: String,
     )
 }
-
-@Serializable
-private class PropertyValueDto(
-    @SerialName("property_name") val propertyName: String,
-    val value: JsonElement? = null,
-)
 
 @Serializable
 private class AppDto(
