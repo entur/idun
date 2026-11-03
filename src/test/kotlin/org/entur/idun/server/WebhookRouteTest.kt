@@ -86,7 +86,7 @@ class WebhookRouteTest {
             deliver("pull_request", """{"action":"opened","number":7,$repository}""").status shouldBe HttpStatusCode.Accepted
             awaitBackground()
             reviewer.calls shouldBe 1
-            gh.ownRuns.getValue(HEAD).externalId shouldBe "safe"
+            gh.ownRuns.getValue(HEAD).externalId!!.startsWith("safe:") shouldBe true
         }
 
     @Test
@@ -142,6 +142,16 @@ class WebhookRouteTest {
             awaitBackground()
             reviewer.calls shouldBe 1
             (job as Job).isActive shouldBe true
+        }
+
+    @Test
+    fun `for stor body gir 413 uten å verifisere signaturen`() =
+        testApplication {
+            application { module(deps) }
+            val body = "x".repeat(5 * 1024 * 1024 + 1)
+            deliver("pull_request", body).status shouldBe HttpStatusCode.PayloadTooLarge
+            awaitBackground()
+            factory.calls shouldBe 0
         }
 
     @Test

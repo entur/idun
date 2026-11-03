@@ -1,13 +1,16 @@
 package org.entur.idun
 
 import com.google.genai.Client
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.request.header
-import io.ktor.server.request.receive
+import io.ktor.server.request.receiveChannel
+import io.ktor.utils.io.readBuffer
+import kotlinx.io.readByteArray
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -35,6 +38,7 @@ import java.time.Clock
 private const val DEFAULT_PORT = 8080
 private const val DEFAULT_MODEL = "gemini-3.1-pro-preview"
 private const val DEFAULT_DAILY_USD = 20.0
+private const val MAX_WEBHOOK_BYTES = 5 * 1024 * 1024
 
 private val log = LoggerFactory.getLogger("org.entur.idun.Application")
 
@@ -156,7 +160,19 @@ private suspend fun handleWebhook(
     }
     val delivery = call.request.header("X-GitHub-Delivery")
     val event = call.request.header("X-GitHub-Event")
-    val body = call.receive<ByteArray>()
+    // Før signaturen: en stor body skal ikke leses inn eller hashes. GitHub-payloads Idun bryr seg om er små.
+    val declared = call.request.header(HttpHeaders.ContentLength)?.toLongOrNull()
+    if (declared != null && declared > MAX_WEBHOOK_BYTES) {
+        log.warn("webhook.too_large delivery={} bytes={}", delivery, declared)
+        call.respond(HttpStatusCode.PayloadTooLarge)
+        return
+    }
+    val body = call.receiveChannel().readBuffer(MAX_WEBHOOK_BYTES + 1L).readByteArray()
+    if (body.size > MAX_WEBHOOK_BYTES) {
+        log.warn("webhook.too_large delivery={}", delivery)
+        call.respond(HttpStatusCode.PayloadTooLarge)
+        return
+    }
     if (!verifySignature(secret.toByteArray(Charsets.UTF_8), body, call.request.header("X-Hub-Signature-256"))) {
         log.warn("webhook.unauthorized delivery={}", delivery)
         call.respond(HttpStatusCode.Unauthorized)

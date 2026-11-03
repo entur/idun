@@ -18,6 +18,8 @@ data class RepoModes(
     }
 }
 
+private val KNOWN_MODES = setOf("off", "advise", "approve")
+
 private fun key(
     owner: String,
     name: String,
@@ -25,8 +27,8 @@ private fun key(
 
 /**
  * Parser `owner/name=mode,owner/name=mode`. Mellomrom trimmes, reponavn sammenlignes uten hensyn til
- * store og små bokstaver, og modusen går gjennom [parseMode] (ukjent gir `OFF`). Tom eller manglende verdi
- * gir `OFF` for alle. Feiler lukket: én misformet oppføring (uten `=` eller `/`, en tom del, et duplikat)
+ * store og små bokstaver, og modusen må være nøyaktig `off`, `advise` eller `approve`. Tom eller manglende verdi
+ * gir `OFF` for alle. Feiler lukket: én misformet oppføring (uten `=` eller `/`, en tom del, et duplikat, en ukjent modus)
  * gjør hele verdien ugyldig, og da er alle repoer `OFF`.
  */
 fun parseRepoModes(value: String?): RepoModes {
@@ -41,6 +43,8 @@ fun parseRepoModes(value: String?): RepoModes {
         val repoParts = repo.split('/').map { it.trim() }
         if (repoParts.size != 2 || repoParts.any { it.isEmpty() }) return invalid("forventet owner/name")
         if (mode.isEmpty()) return invalid("mangler modus")
+        // En skrivefeil som `aprove` skal synes i loggen, ikke stille bli off.
+        if (mode !in KNOWN_MODES) return invalid("ukjent modus")
         val key = key(repoParts[0], repoParts[1])
         if (key in modes) return invalid("$key er oppgitt flere ganger")
         modes[key] = parseMode(mode)

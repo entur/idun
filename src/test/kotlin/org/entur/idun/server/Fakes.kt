@@ -82,6 +82,7 @@ internal class FakeGitHub(
     val reviews = mutableListOf<Review>()
     val prsForCommit = mutableMapOf<String, List<Int>>()
     var pullRequestReads = 0
+    var mergeBaseSha = MERGE_BASE
 
     /** Kalles med navnet på hvert kall; kan kaste for å simulere feil. */
     var onCall: (String) -> Unit = {}
@@ -128,8 +129,7 @@ internal class FakeGitHub(
         head: String,
     ): String {
         call("mergeBase")
-        check(base == pr.baseSha && head == pr.headSha) { "mergeBase($base, $head)" }
-        return MERGE_BASE
+        return mergeBaseSha
     }
 
     override suspend fun fileContent(

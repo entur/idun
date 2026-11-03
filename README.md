@@ -15,7 +15,7 @@ Hvis Idun er i tvil, går PR-en til et menneske. Den skal heller sende for mange
 
 ## Moduser
 
-Modusen settes per repo i Iduns egen konfigurasjon: `repo_modes` i `terraform/env/prd.tfvars`, for eksempel `"entur/idun-sandbox=approve,entur/products-api=advise"`. Den endres med en PR og en release. Den leses aldri fra filer i repoet som vurderes, fordi en PR kan endre filer. Et repo som ikke er listet, er `off`, og en misformet verdi gjør alle repoer `off`. Rulles Idun ut i hele orgen, kan en custom property på orgen erstatte listen.
+Modusen settes per repo i Iduns egen konfigurasjon: `repo_modes` i `terraform/env/prd.tfvars`, for eksempel `"entur/idun-sandbox=approve,entur/products-api=advise"`. Den endres med en PR og en release. Den leses aldri fra filer i repoet som vurderes, fordi en PR kan endre filer. Et repo som ikke er listet, er `off`, og en misformet verdi, også en ukjent modus som `aprove`, gjør alle repoer `off`. Rulles Idun ut i hele orgen, kan en custom property på orgen erstatte listen.
 
 | Modus | Oppførsel |
 |---|---|
@@ -43,6 +43,7 @@ Konfigurasjonen kan bare gjøre reglene strengere: linjegrensen kan senkes, men 
 ## Før du slår Idun på i et repo
 
 - [ ] **Ruleset:** repoets rulesets krever én godkjenning, og ingen av dem krever code owner-review. Da skal godkjenningen fra GitHub-appen telle som den påkrevde reviewen.
+- [ ] **Påkrevd: «Dismiss stale pull request approvals when new commits are pushed»** er slått på i rulesetet som krever godkjenning. Det er sikkerhetsnettet når Idun er av, i redusert modus eller feiler, og ikke rekker å trekke en godkjenning selv etter en ny push. Uten dette skal repoet ikke stå i `approve`.
 - [ ] **Godkjenningen teller:** bekreft det i et sandbox-repo med de samme rulesetene før du setter `approve`. Bypass hjelper ikke, fordi bypass gjelder den som merger, og det er et menneske. Hvis godkjenningen ikke teller, ikke gi Idun mer makt: bestem på nytt hvordan rulesetene skal se ut.
 - [ ] **Appen er installert** på repoet, og bare på repoer som skal vurderes (begrens installasjonen til valgte repoer).
 - [ ] **CI** kjører på PR-er og rapporterer status på head-commiten, siden Idun venter på grønn CI.

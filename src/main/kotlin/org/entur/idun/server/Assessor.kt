@@ -24,6 +24,7 @@ import org.entur.idun.report.COMMENT_MARKER
 import org.entur.idun.report.NEEDS_HUMAN_LABEL
 import org.entur.idun.report.NOT_REFACTOR_ANY_MORE
 import org.entur.idun.report.Reporter
+import org.entur.idun.report.renderCheck
 import org.entur.idun.report.renderComment
 import org.entur.idun.review.BehaviourReviewer
 import org.entur.idun.review.ReviewFile
@@ -43,8 +44,12 @@ import org.slf4j.Logger
 private const val CONFIG_PATH = ".github/idun.yaml"
 private const val ERROR_TEXT_LENGTH = 200
 
-/** `external_id` for checker som ikke er et utfall. Satt eksplisitt, så en gammel `safe` aldri blir stående. */
+private const val SAFE_ID = "safe"
+private const val NEEDS_HUMAN_ID = "needs-human"
+
+/** `external_id` for checker som ikke er et gjenbrukbart utfall. Satt eksplisitt, så en gammel `safe` aldri blir stående. */
 private const val ASSESSING_ID = "assessing"
+private const val WAITING_ID = "waiting"
 private const val NOT_REFACTOR_ID = "not-refactor"
 private const val ERROR_ID = "error"
 
@@ -74,8 +79,10 @@ private val SECRET_LIKE = Regex("""(?i)(gh[pousr]_\w+|github_pat_\w+|(bearer|tok
 
 /**
  * Vurderer PR-er når GitHub sender hendelser. Hver PR vurderes under sin egen lås, så to hendelser for samme
- * PR aldri kjører samtidig. Feiler lukket: alle unntak logges som `idun.error`, og checken settes til
- * `neutral` hvis det går.
+ * PR aldri kjører samtidig. Feiler lukket: alle unntak logges som `idun.error`, label og godkjenning fjernes,
+ * og checken settes til `neutral` hvis det går.
+ *
+ * En godkjenning står bare så lenge siste vurdering av head er `Safe` i `APPROVE`. Alle andre utfall trekker den.
  *
  * Modusen kommer fra [modeOf] (Iduns egen konfigurasjon), aldri fra repoet som vurderes.
  */
@@ -96,16 +103,26 @@ class Assessor(
         val mode: Mode,
     )
 
+    /** Hvor langt en vurdering kom, for feilhåndteringen. */
+    private class Progress {
+        var prRead = false
+
+        /** Commiten en feil-check kan skrives på. Satt først når Idun faktisk har noe å si om PR-en. */
+        var engagedSha: String? = null
+    }
+
     /** Det som kommer ut av trinnene før rapporteringen. */
     private sealed interface Assessment {
+        /** [fingerprint] er satt bare når modellen faktisk svarte; da kan utfallet gjenbrukes. */
         data class Fresh(
             val outcome: Outcome,
             val costUsd: Double = 0.0,
+            val fingerprint: String? = null,
         ) : Assessment
 
-        /** Egen ferdig check på samme commit med `safe` eller `needs-human`: modellen kalles ikke på nytt. */
+        /** Egen ferdig check med samme fingeravtrykk: modellen kalles ikke på nytt. */
         data class Reused(
-            val externalId: String,
+            val safe: Boolean,
         ) : Assessment
     }
 
@@ -146,46 +163,65 @@ class Assessor(
         val mode = modeOf(repo)
         if (mode == Mode.OFF) return@withLock
 
-        var gh: GitHub? = null
-        // Commiten en feil-check kan skrives på. Satt først når Idun faktisk har noe å si om PR-en.
-        var engagedSha: String? = null
+        var ctx: Context? = null
+        val progress = Progress()
         try {
             val client = github.forInstallation(installationId)
-            gh = client
-            run(Context(client, Reporter(client, appLogin), repo, number, mode)) { engagedSha = it }
+            ctx = Context(client, Reporter(client, appLogin), repo, number, mode)
+            run(ctx, progress)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logError(repo, number, engagedSha, e)
-            val client = gh
-            val sha = engagedSha
-            if (client != null && sha != null) {
-                try {
-                    client.upsertCheckRun(repo, sha, CHECK_NAME, ERROR_CHECK)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logError(repo, number, sha, e)
-                }
-            }
+            logError(repo, number, progress.engagedSha, e)
+            ctx?.let { failClosed(it, progress) }
+        }
+    }
+
+    /**
+     * Etter en feil: trekk godkjenning og label (hver for seg, så én feil ikke stopper den andre), og skriv en
+     * feil-check. Gjøres når Idun har noe å si om PR-en, eller når PR-en ikke engang kunne leses (da vet vi ikke).
+     */
+    private suspend fun failClosed(
+        ctx: Context,
+        progress: Progress,
+    ) {
+        val sha = progress.engagedSha
+        if (sha == null && progress.prRead) return
+        bestEffort(ctx, sha) { ctx.reporter.dismissApprovals(ctx.repo, ctx.number, keepSha = null) }
+        bestEffort(ctx, sha) { ctx.reporter.setLabel(ctx.repo, ctx.number, null) }
+        if (sha != null) bestEffort(ctx, sha) { ctx.gh.upsertCheckRun(ctx.repo, sha, CHECK_NAME, ERROR_CHECK) }
+    }
+
+    private suspend fun bestEffort(
+        ctx: Context,
+        sha: String?,
+        block: suspend () -> Unit,
+    ) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logError(ctx.repo, ctx.number, sha, e)
         }
     }
 
     private suspend fun run(
         ctx: Context,
-        engage: (String) -> Unit,
+        progress: Progress,
     ) {
         val pr = ctx.gh.pullRequest(ctx.repo, ctx.number)
+        progress.prRead = true
         if (pr.state == "closed") {
             logFeedback(ctx, pr)
             return
         }
         val title = parseTitle(pr.title)
         if (!title.isRefactor()) {
-            leave(ctx, pr, engage)
+            leave(ctx, pr, progress)
             return
         }
-        engage(pr.headSha)
+        progress.engagedSha = pr.headSha
         ctx.reporter.dismissApprovals(ctx.repo, ctx.number, keepSha = pr.headSha)
         when (val assessment = evaluate(ctx, pr, title)) {
             is Assessment.Fresh -> report(ctx, pr, assessment)
@@ -197,7 +233,7 @@ class Assessor(
     private suspend fun leave(
         ctx: Context,
         pr: PullRequest,
-        engage: (String) -> Unit,
+        progress: Progress,
     ) {
         val ownRun = ownRun(ctx.gh.checkRuns(ctx.repo, pr.headSha))
         val comment = ownComment(ctx)
@@ -205,7 +241,7 @@ class Assessor(
         // Allerede ryddet for denne commiten (eller kommentaren sier det, og det finnes ingen check å oppdatere).
         if (ownRun?.externalId == NOT_REFACTOR_ID || (ownRun == null && comment?.body == NOT_REFACTOR_ANY_MORE)) return
 
-        engage(pr.headSha)
+        progress.engagedSha = pr.headSha
         ctx.reporter.dismissApprovals(ctx.repo, ctx.number, keepSha = null)
         ctx.reporter.setLabel(ctx.repo, ctx.number, null)
         ctx.reporter.writeComment(ctx.repo, ctx.number, NOT_REFACTOR_ANY_MORE)
@@ -214,9 +250,9 @@ class Assessor(
     }
 
     /**
-     * Trinnene før modellen, billigst først, og modellen til slutt. En tidligere `safe`/`needs-human` på samme
-     * commit gjenbrukes bare når alle reglene fortsatt slipper PR-en gjennom, rett før modellen ellers ville blitt
-     * kalt. Da blir en PR som er blitt draft, har fått rød CI eller ny base-konfig, vurdert på nytt.
+     * Trinnene før modellen, billigst først, og modellen til slutt. En tidligere `safe`/`needs-human` gjenbrukes
+     * bare når alle reglene fortsatt slipper PR-en gjennom og fingeravtrykket av det modellen fikk se er likt
+     * (samme PR, merge-base, tittel og filer), rett før modellen ellers ville blitt kalt.
      */
     private suspend fun evaluate(
         ctx: Context,
@@ -237,16 +273,12 @@ class Assessor(
         val idunConfig = (config as? ConfigResult.Ok)?.config ?: error("Ugyldig konfig skulle gitt NeedsHuman")
 
         val files = gh.pullRequestFiles(repo, ctx.number)
-        val contents = sourceContents(ctx, pr, files, idunConfig)
+        val mergeBase = gh.mergeBase(repo, pr.baseSha, pr.headSha)
+        val contents = sourceContents(ctx, pr, mergeBase, files, idunConfig)
         val rules = evaluateFiles(files, contents, idunConfig)
         // Den eneste veien til modellen.
         decideBeforeModel(ctx.mode, pr, title, ci, config, rules)?.let { return Assessment.Fresh(it) }
 
-        ownRun(runs)
-            ?.takeIf { it.status == "completed" && (it.externalId == "safe" || it.externalId == "needs-human") }
-            ?.let { return Assessment.Reused(it.externalId!!) }
-
-        gh.upsertCheckRun(repo, pr.headSha, CHECK_NAME, ASSESSING_CHECK)
         val input =
             ReviewInput(
                 title = pr.title,
@@ -256,8 +288,23 @@ class Assessor(
                         ReviewFile(file.path, checkNotNull(file.patch), content.before, content.after)
                     },
             )
+        val fingerprint = reviewFingerprint(ctx.number, mergeBase, input)
+        ownRun(runs)?.let { run ->
+            when {
+                run.status != "completed" -> Unit
+                run.externalId == "$SAFE_ID:$fingerprint" && run.conclusion == "success" -> return Assessment.Reused(safe = true)
+                run.externalId == "$NEEDS_HUMAN_ID:$fingerprint" && run.conclusion == "neutral" -> return Assessment.Reused(safe = false)
+            }
+        }
+
+        gh.upsertCheckRun(repo, pr.headSha, CHECK_NAME, ASSESSING_CHECK)
         val result = reviewer.review(input)
-        return Assessment.Fresh(decideAfterReview(result, input), (result as? ReviewResult.Answered)?.costUsd ?: 0.0)
+        val outcome = decideAfterReview(result, input)
+        // En feilet modell (timeout, budsjett, ugyldig svar) gjenbrukes ikke: neste hendelse prøver igjen.
+        return when (result) {
+            is ReviewResult.Answered -> Assessment.Fresh(outcome, result.costUsd, fingerprint)
+            is ReviewResult.Failed -> Assessment.Fresh(outcome)
+        }
     }
 
     /**
@@ -268,14 +315,12 @@ class Assessor(
     private suspend fun sourceContents(
         ctx: Context,
         pr: PullRequest,
+        mergeBase: String,
         files: List<ChangedFile>,
         config: IdunConfig,
     ): Map<String, FileContents> {
-        val sources = files.filter { classify(it, config) == FileClass.SOURCE }
-        if (sources.isEmpty()) return emptyMap()
-        val mergeBase = ctx.gh.mergeBase(ctx.repo, pr.baseSha, pr.headSha)
         val contents = mutableMapOf<String, FileContents>()
-        for (file in sources) {
+        for (file in files.filter { classify(it, config) == FileClass.SOURCE }) {
             val before =
                 if (file.status == FileStatus.ADDED) {
                     null
@@ -293,6 +338,24 @@ class Assessor(
         return contents
     }
 
+    /** Har head flyttet seg, får den nye commiten sin egen hendelse. Da skrives ingenting for den gamle. */
+    private suspend fun headMoved(
+        ctx: Context,
+        sha: String,
+    ): Boolean {
+        val moved = ctx.gh.pullRequest(ctx.repo, ctx.number).headSha != sha
+        if (moved) log.info("idun.stale repo={} pr={} sha={}", ctx.repo.slug(), ctx.number, sha)
+        return moved
+    }
+
+    /** Godkjenningen står bare når utfallet er `Safe` i `APPROVE`. Alt annet trekker den, også `Safe` i advise. */
+    private suspend fun dismissUnlessApproving(
+        ctx: Context,
+        safe: Boolean,
+    ) {
+        if (!(safe && ctx.mode == Mode.APPROVE)) ctx.reporter.dismissApprovals(ctx.repo, ctx.number, keepSha = null)
+    }
+
     private suspend fun report(
         ctx: Context,
         pr: PullRequest,
@@ -300,15 +363,12 @@ class Assessor(
     ) {
         val outcome = assessment.outcome
         val sha = pr.headSha
-        // Har head flyttet seg, får den nye commiten sin egen hendelse. Ingenting skrives for den gamle.
-        if (ctx.gh.pullRequest(ctx.repo, ctx.number).headSha != sha) {
-            log.info("idun.stale repo={} pr={} sha={}", ctx.repo.slug(), ctx.number, sha)
-            return
-        }
+        if (headMoved(ctx, sha)) return
         // Ignore kan ikke komme hit (modus og tittel er sjekket), men skal aldri rapporteres.
         if (outcome is Outcome.Ignore) return
 
-        ctx.reporter.writeCheck(ctx.repo, sha, outcome)
+        dismissUnlessApproving(ctx, outcome is Outcome.Safe)
+        ctx.gh.upsertCheckRun(ctx.repo, sha, CHECK_NAME, checkWrite(outcome, assessment.fingerprint))
         when (outcome) {
             is Outcome.Safe -> {
                 ctx.reporter.writeComment(ctx.repo, ctx.number, renderComment(outcome, sha, ctx.mode))
@@ -331,10 +391,11 @@ class Assessor(
         pr: PullRequest,
         assessment: Assessment.Reused,
     ) {
-        val safe = assessment.externalId == "safe"
-        ctx.reporter.setLabel(ctx.repo, ctx.number, if (safe) APPROVED_LABEL else NEEDS_HUMAN_LABEL)
-        if (safe) approveIfAllowed(ctx, pr.headSha)
-        logAssessed(ctx, pr.headSha, assessment.externalId, emptyList(), 0.0, reused = true)
+        if (headMoved(ctx, pr.headSha)) return
+        dismissUnlessApproving(ctx, assessment.safe)
+        ctx.reporter.setLabel(ctx.repo, ctx.number, if (assessment.safe) APPROVED_LABEL else NEEDS_HUMAN_LABEL)
+        if (assessment.safe) approveIfAllowed(ctx, pr.headSha)
+        logAssessed(ctx, pr.headSha, if (assessment.safe) SAFE_ID else NEEDS_HUMAN_ID, emptyList(), 0.0, reused = true)
     }
 
     /** Godkjenner bare i `APPROVE` (advise godkjenner aldri), og trekker tilbake hvis head flyttet seg imens. */
@@ -365,7 +426,8 @@ class Assessor(
             pr.headSha,
             pr.merged,
             ctx.mode.name.lowercase(),
-            run?.externalId,
+            // `safe:<fingeravtrykk>` → `safe`
+            run?.externalId?.substringBefore(':'),
             reactions?.thumbsUp,
             reactions?.thumbsDown,
         )
@@ -418,6 +480,25 @@ class Assessor(
 
     private suspend fun ownComment(ctx: Context) =
         ctx.gh.comments(ctx.repo, ctx.number).firstOrNull { it.login == appLogin && COMMENT_MARKER in it.body }
+}
+
+/**
+ * Checken for et utfall. `safe`/`needs-human` fra et faktisk modellsvar får fingeravtrykket med
+ * (`safe:<fp>`), så det bare gjenbrukes for nøyaktig samme input. `Waiting` får egen id, så en gammel `safe` ikke
+ * blir stående (GitHub beholder `external_id` når den ikke sendes).
+ */
+private fun checkWrite(
+    outcome: Outcome,
+    fingerprint: String?,
+): CheckRunWrite {
+    val write = renderCheck(outcome)
+    val id =
+        when {
+            outcome is Outcome.Waiting -> WAITING_ID
+            fingerprint != null && write.externalId != null -> "${write.externalId}:$fingerprint"
+            else -> write.externalId
+        }
+    return write.copy(externalId = id)
 }
 
 private fun RepoRef.slug() = "$owner/$name"

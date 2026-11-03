@@ -8,6 +8,7 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import io.kotest.matchers.string.shouldStartWith
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -26,6 +27,7 @@ import org.entur.idun.report.NEEDS_HUMAN_LABEL
 import org.entur.idun.report.NOT_REFACTOR_ANY_MORE
 import org.entur.idun.review.FIXTURE_PATH
 import org.entur.idun.review.ReviewResult
+import org.entur.idun.review.Verdict
 import org.entur.idun.review.validResponse
 import org.entur.idun.rules.FileStatus
 import org.junit.jupiter.api.Test
@@ -115,7 +117,7 @@ class AssessorTest {
             val check = gh.ownRuns.getValue(HEAD)
             check.status shouldBe "completed"
             check.conclusion shouldBe "success"
-            check.externalId shouldBe "safe"
+            check.externalId shouldStartWith "safe:"
             ownComment().body shouldContain "advise-modus"
             gh.labels shouldContainExactly setOf(APPROVED_LABEL)
             gh.reviews.shouldBeEmpty()
@@ -213,7 +215,7 @@ class AssessorTest {
             reviewer.beforeAnswer = { slowly() }
             listOf(launch { assess() }, launch { assess() }).joinAll()
             reviewer.calls shouldBe 1
-            gh.ownRuns.getValue(HEAD).externalId shouldBe "safe"
+            gh.ownRuns.getValue(HEAD).externalId shouldStartWith "safe:"
         }
 
     @Test
@@ -236,14 +238,150 @@ class AssessorTest {
         }
 
     @Test
-    fun `gjenbruk av needs-human-check setter label uten modellkall`() =
+    fun `gjenbruk av needs-human fra modellen setter label uten nytt modellkall`() =
         runBlocking<Unit> {
-            gh.ownRuns[HEAD] = CheckRunWrite("completed", "neutral", "Trenger et menneske", "x", "needs-human")
+            reviewer.result = ReviewResult.Answered(validResponse().copy(verdict = Verdict.UNSURE), costUsd = 0.1)
             mode = Mode.APPROVE
             assess()
-            reviewer.calls shouldBe 0
+            gh.ownRuns.getValue(HEAD).externalId shouldStartWith "needs-human:"
+            gh.labels.clear()
+            assess()
+            reviewer.calls shouldBe 1
             gh.labels shouldContainExactly setOf(NEEDS_HUMAN_LABEL)
             gh.reviews.shouldBeEmpty()
+        }
+
+    @Test
+    fun `needs-human uten fingeravtrykk gjenbrukes ikke`() =
+        runBlocking<Unit> {
+            gh.ownRuns[HEAD] = CheckRunWrite("completed", "neutral", "Trenger et menneske", "x", "needs-human")
+            assess()
+            reviewer.calls shouldBe 1
+        }
+
+    @Test
+    fun `identisk hendelse gjenbruker vurderingen uten modellkall`() =
+        runBlocking<Unit> {
+            assess()
+            val first = gh.ownRuns.getValue(HEAD)
+            assess()
+            reviewer.calls shouldBe 1
+            gh.ownRuns.getValue(HEAD) shouldBe first
+        }
+
+    @Test
+    fun `samme head i en annen PR med annen base vurderes av modellen på nytt`() =
+        runBlocking<Unit> {
+            assess()
+            gh.pr = gh.pr.copy(number = 8, baseSha = "base2")
+            gh.mergeBaseSha = "mergebase2"
+            gh.contents[FIXTURE_PATH to "mergebase2"] = "val c = 1\nval x = 2\n"
+            gh.files = listOf(sourceFile().copy(patch = "@@ -1 +1 @@\n-val c = 1\n+val b = 1"))
+            assessor.onPullRequest(1, REPO, 8, "opened")
+            reviewer.calls shouldBe 2
+        }
+
+    @Test
+    fun `ny base for samme PR gir nytt modellkall`() =
+        runBlocking<Unit> {
+            assess()
+            gh.pr = gh.pr.copy(baseSha = "base2")
+            gh.mergeBaseSha = "mergebase2"
+            gh.contents[FIXTURE_PATH to "mergebase2"] = "val a = 1\nval x = 2\n"
+            assess()
+            reviewer.calls shouldBe 2
+        }
+
+    @Test
+    fun `endret refactor-tittel gir nytt modellkall`() =
+        runBlocking<Unit> {
+            assess()
+            gh.pr = gh.pr.copy(title = "refactor: rename another helper")
+            assess()
+            reviewer.calls shouldBe 2
+        }
+
+    @Test
+    fun `safe med feil conclusion gjenbrukes ikke`() =
+        runBlocking<Unit> {
+            assess()
+            gh.ownRuns[HEAD] = gh.ownRuns.getValue(HEAD).copy(conclusion = "neutral")
+            assess()
+            reviewer.calls shouldBe 2
+        }
+
+    @Test
+    fun `gjenbruk leser head på nytt og skriver ingenting når den har flyttet seg`() =
+        runBlocking<Unit> {
+            mode = Mode.ADVISE
+            assess()
+            mode = Mode.APPROVE
+            gh.labels.clear()
+            gh.onCall = { if (it == "pullRequestFiles") gh.pr = gh.pr.copy(headSha = "head2") }
+            assess()
+            reviewer.calls shouldBe 1
+            gh.reviews.shouldBeEmpty()
+            gh.labels.shouldBeEmpty()
+        }
+
+    @Test
+    fun `ventende CI etter safe gir egen external_id`() =
+        runBlocking<Unit> {
+            assess()
+            gh.ciRuns.clear()
+            gh.ciRuns += CheckRunInfo(2, "test", "in_progress", null, 12, GITHUB_ACTIONS_APP_ID, null)
+            assess()
+            gh.ownRuns.getValue(HEAD).externalId shouldBe "waiting"
+        }
+
+    @Test
+    fun `refactor-utropstegn etter godkjenning trekker godkjenningen tilbake`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            assess()
+            gh.reviews.single().state shouldBe "APPROVED"
+            gh.pr = gh.pr.copy(title = "refactor!: rename helper")
+            assess()
+            gh.reviews.single().state shouldBe "DISMISSED"
+            gh.labels shouldContainExactly setOf(NEEDS_HUMAN_LABEL)
+            gh.ownRuns.getValue(HEAD).summary shouldContain "BREAKING"
+        }
+
+    @Test
+    fun `CI som blir rød på samme commit trekker godkjenningen tilbake`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            assess()
+            gh.ciRuns.clear()
+            gh.ciRuns += CheckRunInfo(2, "test", "completed", "failure", 12, GITHUB_ACTIONS_APP_ID, null)
+            assess()
+            gh.reviews.single().state shouldBe "DISMISSED"
+            gh.labels.shouldBeEmpty()
+        }
+
+    @Test
+    fun `bytte til advise trekker godkjenningen tilbake`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            assess()
+            mode = Mode.ADVISE
+            assess()
+            reviewer.calls shouldBe 1
+            gh.reviews.single().state shouldBe "DISMISSED"
+            gh.labels shouldContainExactly setOf(APPROVED_LABEL)
+        }
+
+    @Test
+    fun `feil etter tidligere godkjenning fjerner label og godkjenning`() =
+        runBlocking<Unit> {
+            mode = Mode.APPROVE
+            assess()
+            gh.labels shouldContainExactly setOf(APPROVED_LABEL)
+            gh.onCall = { if (it == "checkSuites") throw GitHubApiException(500, "boom") }
+            assess()
+            gh.reviews.single().state shouldBe "DISMISSED"
+            gh.labels.shouldBeEmpty()
+            gh.ownRuns.getValue(HEAD).externalId shouldBe "error"
         }
 
     @Test
@@ -302,7 +440,7 @@ class AssessorTest {
     fun `closed logger feedback med reaksjoner`() =
         runBlocking<Unit> {
             gh.pr = gh.pr.copy(state = "closed", merged = true)
-            gh.ownRuns[HEAD] = CheckRunWrite("completed", "success", "Trygg refaktorering", "x", "safe")
+            gh.ownRuns[HEAD] = CheckRunWrite("completed", "success", "Trygg refaktorering", "x", "safe:0123456789abcdef")
             gh.comments += IssueComment(55, "en-person", "$COMMENT_MARKER kopiert")
             gh.comments += IssueComment(56, APP_LOGIN, "$COMMENT_MARKER\n**Idun**: trygg")
             gh.reactions[56] = Reactions(thumbsUp = 2, thumbsDown = 1)
@@ -365,6 +503,9 @@ class AssessorTest {
             gh.labels shouldContainExactly setOf(NEEDS_HUMAN_LABEL)
             gh.reviews.shouldBeEmpty()
             log.single("idun.assessed") shouldContain "REVIEW_FAILED"
+            // En feilet modell gjenbrukes ikke: neste hendelse prøver igjen.
+            assess()
+            reviewer.calls shouldBe 2
         }
 
     @Test
@@ -381,6 +522,6 @@ class AssessorTest {
             gh.prsForCommit[HEAD] = listOf(7)
             assessor.onCommit(installationId = 1, repo = REPO, sha = HEAD)
             reviewer.calls shouldBe 1
-            gh.ownRuns.getValue(HEAD).externalId shouldBe "safe"
+            gh.ownRuns.getValue(HEAD).externalId shouldStartWith "safe:"
         }
 }

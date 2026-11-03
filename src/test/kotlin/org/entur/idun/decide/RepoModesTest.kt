@@ -40,8 +40,18 @@ class RepoModesTest {
     }
 
     @Test
-    fun `ukjent modus gir OFF uten at listen blir ugyldig`() {
-        val modes = parseRepoModes("entur/idun-sandbox=APPROVE,entur/products-api=advise")
+    fun `ukjent modus gjør hele verdien ugyldig`() {
+        for (value in listOf("entur/idun-sandbox=aprove,entur/products-api=advise", "entur/idun-sandbox=APPROVE")) {
+            val modes = parseRepoModes(value)
+            modes.invalidReason.shouldNotBeNull()
+            modes.modeOf(sandbox) shouldBe Mode.OFF
+            modes.modeOf(products) shouldBe Mode.OFF
+        }
+    }
+
+    @Test
+    fun `off er en gyldig modus`() {
+        val modes = parseRepoModes("entur/idun-sandbox=off,entur/products-api=advise")
         modes.invalidReason.shouldBeNull()
         modes.modeOf(sandbox) shouldBe Mode.OFF
         modes.modeOf(products) shouldBe Mode.ADVISE
