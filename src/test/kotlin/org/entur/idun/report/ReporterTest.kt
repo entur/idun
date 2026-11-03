@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import org.entur.idun.decide.Outcome
 import org.entur.idun.github.CheckRunWrite
 import org.entur.idun.github.GitHub
+import org.entur.idun.github.GitHubApiException
 import org.entur.idun.github.IssueComment
 import org.entur.idun.github.RepoRef
 import org.entur.idun.github.Review
@@ -80,6 +81,22 @@ class ReporterTest {
             coVerify(exactly = 1) { gh.dismissReview(repo, 1, 10, any()) }
             coVerify(exactly = 1) { gh.dismissReview(repo, 1, 11, any()) }
             coVerify(exactly = 2) { gh.dismissReview(any(), any(), any(), any()) }
+        }
+
+    @Test
+    fun `dismissApprovals prøver alle og kaster etterpå når én feiler`() =
+        runBlocking<Unit> {
+            coEvery { gh.reviews(repo, 1) } returns
+                listOf(approval(10, "idun[bot]", "a"), approval(11, "idun[bot]", "b"), approval(12, "idun[bot]", "c"))
+            coEvery { gh.dismissReview(repo, 1, 10, any()) } throws GitHubApiException(502, "Bad gateway")
+            coEvery { gh.dismissReview(repo, 1, 12, any()) } throws GitHubApiException(500, "boom")
+            val e = shouldThrow<IllegalStateException> { reporter.dismissApprovals(repo, 1, keepSha = null) }
+            coVerify(exactly = 1) { gh.dismissReview(repo, 1, 10, any()) }
+            coVerify(exactly = 1) { gh.dismissReview(repo, 1, 11, any()) }
+            coVerify(exactly = 1) { gh.dismissReview(repo, 1, 12, any()) }
+            e.message shouldContain "10"
+            e.message shouldContain "12"
+            e.message shouldContain "502"
         }
 
     @Test

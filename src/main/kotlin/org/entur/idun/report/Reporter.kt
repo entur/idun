@@ -1,7 +1,9 @@
 package org.entur.idun.report
 
+import kotlinx.coroutines.CancellationException
 import org.entur.idun.decide.Outcome
 import org.entur.idun.github.GitHub
+import org.entur.idun.github.GitHubApiException
 import org.entur.idun.github.RepoRef
 
 const val APPROVED_LABEL = "idun:approved"
@@ -76,17 +78,35 @@ class Reporter(
     /**
      * Trekker tilbake Iduns egne `APPROVED`-reviews hvis markør-sha ikke er [keepSha]. En godkjenning uten
      * lesbar markør regnes som «ikke keepSha» og trekkes tilbake (fail closed).
+     *
+     * Hver godkjenning forsøkes trukket selv om en tidligere feilet. Feilet noen, kastes et
+     * [IllegalStateException] etterpå som lister dem, med den første feilen som årsak.
      */
     suspend fun dismissApprovals(
         repo: RepoRef,
         number: Int,
         keepSha: String?,
     ) {
+        val failures = mutableListOf<Pair<Long, Exception>>()
         for (review in gh.reviews(repo, number)) {
             if (review.login != appLogin || review.state != "APPROVED") continue
             val markedSha = APPROVAL_MARKER.find(review.body)?.groupValues?.get(1)
             if (keepSha != null && markedSha == keepSha) continue
-            gh.dismissReview(repo, number, review.id, "Idun: godkjenningen gjelder ikke lenger denne commiten.")
+            try {
+                gh.dismissReview(repo, number, review.id, "Idun: godkjenningen gjelder ikke lenger denne commiten.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failures += review.id to e
+            }
+        }
+        if (failures.isEmpty()) return
+        val listed =
+            failures.joinToString { (id, e) ->
+                "$id (${e::class.simpleName}${(e as? GitHubApiException)?.status?.let { " $it" }.orEmpty()})"
+            }
+        throw IllegalStateException("Klarte ikke å trekke tilbake godkjenning: $listed", failures.first().second).apply {
+            failures.drop(1).forEach { addSuppressed(it.second) }
         }
     }
 }
