@@ -56,6 +56,9 @@ private fun needsHuman(
  * Avgjørelsen som kan tas før modellen kalles. Gir `null` når PR-en skal videre til review.
  * Parametere som er `null` er ikke hentet ennå; kalleren stopper ved første ikke-`null` svar.
  * Rekkefølgen er viktig: billige sjekker først, slik at vi ikke henter data vi ikke trenger.
+ *
+ * Et `null`-svar er bare grønt lys til modellen når `ci`, `config` og `rules` alle er ikke-`null`.
+ * Ellers betyr `null` «hent neste steg». Bruk [decideBeforeModel] rett før modellkallet.
  */
 fun decideBeforeReview(
     mode: Mode,
@@ -82,6 +85,19 @@ fun decideBeforeReview(
     if (rules != null && !rules.eligible) return Outcome.NeedsHuman(rules.reasons)
     return null
 }
+
+/**
+ * Samme avgjørelse som [decideBeforeReview], men med alle data påkrevd. Dette er det eneste kallet
+ * der et `null`-svar gir lov til å kalle modellen.
+ */
+fun decideBeforeModel(
+    mode: Mode,
+    pr: PullRequest,
+    title: ConventionalTitle?,
+    ci: CiState,
+    config: ConfigResult,
+    rules: RuleResult,
+): Outcome? = decideBeforeReview(mode, pr, title, ci, config, rules)
 
 fun decideAfterReview(
     result: ReviewResult,

@@ -149,6 +149,26 @@ class DecideTest {
     }
 
     @Test
+    fun `decideBeforeModel gir null for helt grønn input`() {
+        decideBeforeModel(Mode.APPROVE, pr, refactor, CiState.GREEN, config, eligible) shouldBe null
+    }
+
+    @Test
+    fun `decideBeforeModel gir samme utfall som decideBeforeReview for ikke-eligible regler`() {
+        val rules = RuleResult(listOf(Reason(ReasonCode.OTHER_FILE, "x")), emptyList(), 0)
+        val expected = decide(rules = rules)
+        expected shouldBe Outcome.NeedsHuman(rules.reasons)
+        decideBeforeModel(Mode.APPROVE, pr, refactor, CiState.GREEN, config, rules) shouldBe expected
+    }
+
+    @Test
+    fun `decideBeforeModel gir samme utfall som decideBeforeReview for rød CI`() {
+        val expected = decide(ci = CiState.RED)
+        expected shouldBe Outcome.CiFailed
+        decideBeforeModel(Mode.APPROVE, pr, refactor, CiState.RED, config, eligible) shouldBe expected
+    }
+
+    @Test
     fun `review Failed gir NeedsHuman REVIEW_FAILED`() {
         val outcome = decideAfterReview(ReviewResult.Failed("tidsavbrudd"), fixtureInput).shouldBeInstanceOf<Outcome.NeedsHuman>()
         outcome.reasons shouldHaveSize 1
