@@ -1,0 +1,78 @@
+name: CI
+
+# Hver PR: tester, Docker-lint og -build, Terraform-lint og -plan. Ingenting
+# pushes eller applies; prd endres bare gjennom en release (release.yml).
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Ingenting som standard; hver jobb ber om det den trenger.
+permissions: {}
+
+jobs:
+  verify-pr:
+    name: Verify PR
+    uses: entur/gha-meta/.github/workflows/verify-pr.yml@v1
+    permissions:
+      pull-requests: read
+
+  test:
+    name: Test
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "25"
+      # Tester, men ikke `eval`: den kaller den ekte modellen og koster penger.
+      - name: Check
+        run: ./gradlew check
+
+  docker-lint:
+    name: Docker Lint
+    uses: entur/gha-docker/.github/workflows/lint.yml@v1
+    permissions:
+      contents: read
+
+  # Et vanlig build uten registry-innlogging: det viser at imaget bygger på
+  # hver PR, også for Dependabot (de får ikke OIDC-token). Releaser bygger og
+  # pusher med gha-docker (deploy.yml).
+  docker-build:
+    name: Docker Build
+    needs: docker-lint
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build
+        run: docker build --tag idun:pr .
+
+  terraform-lint:
+    name: Terraform Lint
+    uses: entur/gha-terraform/.github/workflows/lint.yml@v3
+    permissions:
+      contents: read
+
+  # På release-PR-en (version.txt er bumpet) er dette en forhåndsvisning av
+  # deployen. Hoppes over for Dependabot, som ikke får
+  # OIDC-token for GCP; en hoppet over jobb teller som grønn.
+  terraform-plan:
+    name: Terraform Plan (prd)
+    needs: terraform-lint
+    if: github.actor != 'dependabot[bot]'
+    uses: entur/gha-terraform/.github/workflows/plan.yml@v3
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    with:
+      environment: prd
+    secrets: inherit

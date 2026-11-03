@@ -1,0 +1,56 @@
+name: Release
+
+# Den eneste veien inn i prd. En push til main åpner eller oppdaterer
+# Release Please-PR-en; når den merges, opprettes releasen, og deploy.yml
+# bygger den versjonen og kjører Terraform. Kjør
+# manuelt for å bruke den gjeldende releasen på nytt.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+# Ingenting som standard; hver jobb ber om det den trenger.
+permissions: {}
+
+jobs:
+  release:
+    name: Release Please
+    if: github.event_name == 'push'
+    uses: entur/gha-meta/.github/workflows/release.yml@v1
+    with:
+      release_type: manifest
+      config_file: .github/release-please-config.json
+      manifest_file: .github/.release-please-manifest.json
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+  deploy:
+    name: Deploy
+    needs: release
+    # Bare main deployer: en manuell kjøring fra en annen gren ville ellers
+    # applyet den grenens Terraform. Vakten ligger i filen grenen kjører, så
+    # den stopper feil, ikke den som redigerer filen på grenen sin.
+    if: >-
+      always() && !cancelled() && github.ref == 'refs/heads/main' &&
+      (needs.release.outputs.releases_created == 'true' || github.event_name == 'workflow_dispatch')
+    uses: ./.github/workflows/deploy.yml
+    with:
+      # En manuell kjøring bruker releasen som allerede er bygget på nytt.
+      build: ${{ github.event_name == 'push' }}
+    secrets: inherit
+    concurrency:
+      group: deploy-prd
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+      issues: write
+      pull-requests: write
+      security-events: write

@@ -1,0 +1,84 @@
+name: Deploy
+
+# Kalles av release.yml. Bygger, skanner og pusher idun:<versjon> fra
+# release-commiten og kjører så Terraform, som
+# deployer den taggen: Cloud Run-tjenesten leser versjonen fra version.txt.
+on:
+  workflow_call:
+    inputs:
+      build:
+        description: Bygg og push imaget først. False bruker en eksisterende release på nytt.
+        type: boolean
+        default: true
+
+# Ingenting som standard; hver jobb ber om det den trenger.
+permissions: {}
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: read
+        run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
+
+  docker-build:
+    name: Docker Build
+    if: inputs.build
+    uses: entur/gha-docker/.github/workflows/build.yml@v1
+    with:
+      image_name: idun
+    permissions:
+      contents: read
+      id-token: write
+
+  docker-scan:
+    name: Docker Scan
+    if: inputs.build
+    needs: docker-build
+    uses: entur/gha-security/.github/workflows/docker-scan.yml@v2
+    with:
+      image_artifact: ${{ needs.docker-build.outputs.image_artifact }}
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      pull-requests: write
+      security-events: write
+    secrets: inherit
+
+  docker-push:
+    name: Docker Push
+    if: inputs.build
+    # Bare et skannet image pushes, og dermed deployes.
+    needs: [version, docker-build, docker-scan]
+    uses: entur/gha-docker/.github/workflows/push.yml@v1
+    with:
+      image_name: idun
+      image_tag: ${{ needs.version.outputs.version }}
+      # Ingen Harness: Terraform deployer imaget med release-taggen.
+      git_tag: false
+    permissions:
+      contents: write
+      id-token: write
+      pull-requests: write
+    secrets: inherit
+
+  terraform-apply:
+    name: Terraform Apply (prd)
+    needs: docker-push
+    # Kjører etter pushen, eller med en gang når det ikke er noe å bygge.
+    if: always() && !cancelled() && (needs.docker-push.result == 'success' || !inputs.build)
+    uses: entur/gha-terraform/.github/workflows/apply.yml@v3
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    with:
+      environment: prd
+    secrets: inherit
