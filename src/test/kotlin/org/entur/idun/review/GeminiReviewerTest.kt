@@ -146,4 +146,33 @@ class GeminiReviewerTest {
         schema.properties().get().keys shouldBe setOf("verdict", "summary", "checklist", "findings")
         schema.properties().get().getValue("verdict").enum_().get() shouldBe listOf("behaviour_preserving", "unsure", "behaviour_changes")
     }
+
+    @Test
+    fun `ugyldig modellsvar logges uten modellens tekst`() =
+        runBlocking<Unit> {
+            val logger = org.slf4j.LoggerFactory.getLogger(GeminiReviewer::class.java) as ch.qos.logback.classic.Logger
+            val appender =
+                ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>().apply {
+                    context = logger.loggerContext
+                    start()
+                }
+            logger.addAppender(appender)
+            try {
+                val secret = "MODELLTEKST_SOM_IKKE_SKAL_LOGGES"
+                val invalid = listOf("""{"verdict":"$secret"}""", """{"verdict":"unsure","summary":"$secret","extra":"$secret"}""")
+                for (text in invalid) {
+                    reviewer(call = CountingCall { ModelOutput(text, 10, 10) })
+                        .review(fixtureInput)
+                        .shouldBeInstanceOf<ReviewResult.Failed>()
+                }
+                val logged =
+                    appender.list.joinToString("\n") { e ->
+                        e.formattedMessage + (e.throwableProxy?.let { " ${it.className}: ${it.message}" } ?: "")
+                    }
+                logged shouldContain "ikke gyldig JSON etter skjemaet: kotlinx.serialization"
+                (secret in logged) shouldBe false
+            } finally {
+                logger.detachAppender(appender)
+            }
+        }
 }

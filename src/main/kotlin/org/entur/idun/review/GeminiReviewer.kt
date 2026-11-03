@@ -14,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.SerializationException
 import org.slf4j.LoggerFactory
 
 /** Det SDK-kallet gir tilbake, redusert til det Idun bruker. */
@@ -86,11 +85,9 @@ class GeminiReviewer internal constructor(
             val response =
                 try {
                     reviewJson.decodeFromString(ReviewResponse.serializer(), text)
-                } catch (e: SerializationException) {
-                    log.warn("Modellens svar er ikke gyldig JSON etter skjemaet", e)
-                    return ReviewResult.Failed("modellens svar kunne ikke tolkes")
                 } catch (e: IllegalArgumentException) {
-                    log.warn("Modellens svar er ikke gyldig JSON etter skjemaet", e)
+                    // Også SerializationException. Bare typen: meldingen siterer modellens svar.
+                    log.warn("Modellens svar er ikke gyldig JSON etter skjemaet: {}", e::class.qualifiedName)
                     return ReviewResult.Failed("modellens svar kunne ikke tolkes")
                 }
             return ReviewResult.Answered(response, cost)
