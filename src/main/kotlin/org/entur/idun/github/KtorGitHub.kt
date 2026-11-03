@@ -71,13 +71,12 @@ class GitHubApiException(
  * [GitHub] over Ktor. Kaster på alle ikke-2xx-svar, bortsett fra 404 i `fileContent` (gir `null`)
  * og `removeLabel` (ignoreres). Lister pagineres via `Link`-headeren.
  *
- * [appId] brukes av `upsertCheckRun` for å bare oppdatere appens egne check runs. Uten den
- * matches kun på navn.
+ * [appId] er appens egen id: `upsertCheckRun` oppdaterer aldri en run som tilhører en annen app.
  */
 class KtorGitHub(
     private val client: HttpClient,
     private val token: String,
-    private val appId: Long? = null,
+    private val appId: Long,
     private val baseUrl: String = GITHUB_API_URL,
 ) : GitHub {
     // --- pull requests ---
@@ -207,7 +206,7 @@ class KtorGitHub(
     ) {
         val existing =
             listCheckRuns(repo, sha, name)
-                .filter { it.name == name && (appId == null || it.appId == appId) }
+                .filter { it.name == name && it.appId == appId }
                 .maxByOrNull { it.id }
         val output =
             buildJsonObject {

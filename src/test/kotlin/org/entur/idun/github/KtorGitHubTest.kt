@@ -28,7 +28,7 @@ class KtorGitHubTest {
     private val repo = RepoRef("entur", "products-api")
 
     private fun gh(handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData): KtorGitHub =
-        KtorGitHub(githubHttpClient(MockEngine(handler)), "tok")
+        KtorGitHub(githubHttpClient(MockEngine(handler)), "tok", appId = 99)
 
     private fun MockRequestHandleScope.json(
         body: String,
@@ -106,11 +106,14 @@ class KtorGitHubTest {
 
     @Test
     fun `Link til annen vert avvises saa tokenet ikke lekker`() {
+        val hosts = mutableListOf<String>()
         val github =
-            gh {
+            gh { req ->
+                hosts += req.url.host
                 json("[]", HttpStatusCode.OK, "Link" to """<https://evil.example/x?page=2>; rel="next"""")
             }
-        shouldThrow<Exception> { runBlocking { github.pullRequestFiles(repo, 5) } }
+        shouldThrow<IllegalStateException> { runBlocking { github.pullRequestFiles(repo, 5) } }
+        hosts shouldContainExactly listOf("api.github.com")
     }
 
     @Test
@@ -360,28 +363,47 @@ class KtorGitHubTest {
         }
 
     @Test
-    fun `upsertCheckRun med appId ignorerer andre appers run med samme navn`() =
+    fun `upsertCheckRun ignorerer andre appers run med samme navn og oppretter egen`() =
+        runBlocking<Unit> {
+            val calls = mutableListOf<Pair<HttpMethod, String>>()
+            var created: JsonObject? = null
+            val github =
+                gh { req ->
+                    calls += req.method to req.url.encodedPath
+                    if (req.method == HttpMethod.Get) {
+                        json(
+                            """{"total_count":1,"check_runs":[
+                               {"id":7,"name":"idun/refactor","status":"completed","conclusion":"success","check_suite":{"id":1},"app":{"id":1}}]}""",
+                        )
+                    } else {
+                        created = req.bodyJson()
+                        json("""{"id":9}""", HttpStatusCode.Created)
+                    }
+                }
+            github.upsertCheckRun(repo, "s1", "idun/refactor", CheckRunWrite("completed", "failure", "T", "S", null))
+            calls.none { it.first == HttpMethod.Patch } shouldBe true
+            calls.last() shouldBe (HttpMethod.Post to "/repos/entur/products-api/check-runs")
+            created!!["name"] shouldBe JsonPrimitive("idun/refactor")
+            created["head_sha"] shouldBe JsonPrimitive("s1")
+        }
+
+    @Test
+    fun `upsertCheckRun oppdaterer egen run selv om annen app har samme navn`() =
         runBlocking<Unit> {
             val calls = mutableListOf<Pair<HttpMethod, String>>()
             val github =
-                KtorGitHub(
-                    githubHttpClient(
-                        MockEngine { req ->
-                            calls += req.method to req.url.encodedPath
-                            if (req.method == HttpMethod.Get) {
-                                json(
-                                    """{"total_count":2,"check_runs":[
-                                       {"id":7,"name":"idun","status":"completed","conclusion":"success","check_suite":{"id":1},"app":{"id":1}},
-                                       {"id":8,"name":"idun","status":"in_progress","check_suite":{"id":1},"app":{"id":99}}]}""",
-                                )
-                            } else {
-                                json("""{"id":8}""")
-                            }
-                        },
-                    ),
-                    "tok",
-                    appId = 99,
-                )
+                gh { req ->
+                    calls += req.method to req.url.encodedPath
+                    if (req.method == HttpMethod.Get) {
+                        json(
+                            """{"total_count":2,"check_runs":[
+                               {"id":7,"name":"idun","status":"completed","conclusion":"success","check_suite":{"id":1},"app":{"id":1}},
+                               {"id":8,"name":"idun","status":"in_progress","check_suite":{"id":1},"app":{"id":99}}]}""",
+                        )
+                    } else {
+                        json("""{"id":8}""")
+                    }
+                }
             github.upsertCheckRun(repo, "s1", "idun", CheckRunWrite("completed", "failure", "T", "S", null))
             calls.last() shouldBe (HttpMethod.Patch to "/repos/entur/products-api/check-runs/8")
         }
