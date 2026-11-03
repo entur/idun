@@ -45,7 +45,11 @@ import kotlin.time.Duration.Companion.seconds
 private const val DEFAULT_PORT = 8080
 private const val DEFAULT_MODEL = "gemini-3.1-pro-preview"
 private const val DEFAULT_DAILY_USD = 20.0
-private const val MAX_WEBHOOK_BYTES = 5 * 1024 * 1024
+/** GitHub-payloadene Idun bryr seg om er små; 1 MB er god margin. */
+private const val MAX_WEBHOOK_BYTES = 1024 * 1024
+
+private const val MAX_DELIVERY_LENGTH = 64
+private val DELIVERY_ID = Regex("[A-Za-z0-9-]+")
 
 /** Under startup-proben i Cloud Run (10 × 3 s), så en treg GitHub gir redusert modus i stedet for omstart. */
 private val APP_LOOKUP_TIMEOUT = 10.seconds
@@ -175,7 +179,12 @@ private suspend fun handleWebhook(
         call.respond(HttpStatusCode.ServiceUnavailable)
         return
     }
-    val delivery = call.request.header("X-GitHub-Delivery")
+    // Headeren er ikke signert: logg den bare når den ser ut som en GitHub-id, så den ikke kan forfalske logglinjer.
+    val delivery =
+        call.request
+            .header("X-GitHub-Delivery")
+            ?.takeIf { it.length <= MAX_DELIVERY_LENGTH && DELIVERY_ID.matches(it) }
+            ?: "ugyldig"
     val event = call.request.header("X-GitHub-Event")
     // Før signaturen: en stor body skal ikke leses inn eller hashes. GitHub-payloads Idun bryr seg om er små.
     val declared = call.request.header(HttpHeaders.ContentLength)?.toLongOrNull()

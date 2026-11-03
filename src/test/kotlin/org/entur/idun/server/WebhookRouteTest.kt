@@ -2,6 +2,7 @@ package org.entur.idun.server
 
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldStartWith
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -42,9 +43,10 @@ class WebhookRouteTest {
         event: String,
         body: String,
         signature: String? = sign(body),
+        delivery: String = "d-1",
     ) = client.post("/webhook") {
         header("X-GitHub-Event", event)
-        header("X-GitHub-Delivery", "d-1")
+        header("X-GitHub-Delivery", delivery)
         signature?.let { header("X-Hub-Signature-256", it) }
         setBody(body)
     }
@@ -148,7 +150,7 @@ class WebhookRouteTest {
     fun `for stor body gir 413 uten å verifisere signaturen`() =
         testApplication {
             application { module(deps) }
-            val body = "x".repeat(5 * 1024 * 1024 + 1)
+            val body = "x".repeat(1024 * 1024 + 1)
             deliver("pull_request", body).status shouldBe HttpStatusCode.PayloadTooLarge
             awaitBackground()
             factory.calls shouldBe 0
@@ -161,5 +163,31 @@ class WebhookRouteTest {
             deliver("pull_request", """{"action":"opened"}""").status shouldBe HttpStatusCode.BadRequest
             awaitBackground()
             gh.writes.shouldBeEmpty()
+        }
+
+    @Test
+    fun `X-GitHub-Delivery logges bare når den er kort og bare har trygge tegn`() =
+        testApplication {
+            application { module(deps) }
+            val logger = org.slf4j.LoggerFactory.getLogger("org.entur.idun.Application") as ch.qos.logback.classic.Logger
+            val appender =
+                ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>().apply {
+                    context = logger.loggerContext
+                    start()
+                }
+            logger.addAppender(appender)
+            try {
+                val ping = """{"zen":"x"}"""
+                deliver("ping", ping, delivery = "72d3162e-cc78-11e3-81ab-4c9367dc0958")
+                deliver("ping", ping, delivery = "a".repeat(65))
+                deliver("ping", ping, delivery = "x delivery=forfalsket")
+                val received = appender.list.map { it.formattedMessage }.filter { it.startsWith("webhook.received") }
+                received[0] shouldStartWith "webhook.received delivery=72d3162e-cc78-11e3-81ab-4c9367dc0958 "
+                received[1] shouldStartWith "webhook.received delivery=ugyldig "
+                received[2] shouldStartWith "webhook.received delivery=ugyldig "
+                received.none { "forfalsket" in it || "a".repeat(65) in it } shouldBe true
+            } finally {
+                logger.detachAppender(appender)
+            }
         }
 }
