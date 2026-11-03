@@ -56,4 +56,14 @@ class GlobTest {
         Glob("a+b.txt").matches("a+b.txt") shouldBe true
         Glob("a+b.txt").matches("aab.txt") shouldBe false
     }
+
+    @Test
+    fun `dobbeltstjerne matcher også linjeskift og andre linjeavslutninger i stinavn`() {
+        Glob("specs/**").matches("specs/a\nb.yaml") shouldBe true
+        Glob("specs/**").matches("specs/a\rb.yaml") shouldBe true
+        Glob("specs/**").matches("specs/a\u0085b.yaml") shouldBe true
+        Glob(".github/**").matches(".github/a\u2028b.yml") shouldBe true
+        Glob(".github/**").matches(".github/a\u2029b.yml") shouldBe true
+        Glob("*.sql").matches("a\nb.sql") shouldBe true
+    }
 }

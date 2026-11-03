@@ -57,7 +57,7 @@ class Glob(val pattern: String) {
                     }
                 }
             }
-            return Regex(sb.toString())
+            return Regex(sb.toString(), RegexOption.DOT_MATCHES_ALL)
         }
     }
 }

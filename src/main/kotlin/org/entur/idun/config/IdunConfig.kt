@@ -58,7 +58,7 @@ data class IdunConfig(
                     ).map(::Glob),
                 protectedContent =
                     listOf(
-                        Regex(""":\s*(\w+\.)?(Table|IdTable|LongIdTable|IntIdTable|UUIDTable|UIntIdTable|ULongIdTable|CompositeIdTable)\s*[(<]"""),
+                        Regex(""":\s*(\w+\.)*(Table|IdTable|LongIdTable|IntIdTable|UUIDTable|UIntIdTable|ULongIdTable|CompositeIdTable)\s*[(<]"""),
                         Regex("""@(jakarta\.persistence\.|javax\.persistence\.)?(Entity|Table)\b"""),
                     ),
                 sourcePaths = listOf("**/src/main/**/*.kt", "**/src/main/**/*.java").map(::Glob),
@@ -87,7 +87,7 @@ private data class IdunConfigYaml(
     val maxChangedLines: Int? = null,
 )
 
-/** `null` (eller blank YAML) gir `Ok(DEFAULT)`. Ukjente nøkler, ugyldig YAML og ugyldig regex gir `Invalid`. */
+/** Parser `.github/idun.yaml`. `null` (eller blank YAML) gir `Ok(DEFAULT)`. Ukjente nøkler, ugyldig YAML og ugyldig regex gir `Invalid`. */
 fun IdunConfig.Companion.fromYaml(yaml: String?): ConfigResult {
     if (yaml.isNullOrBlank()) return ConfigResult.Ok(IdunConfig.DEFAULT)
 
@@ -95,7 +95,7 @@ fun IdunConfig.Companion.fromYaml(yaml: String?): ConfigResult {
         try {
             Yaml.default.decodeFromString(IdunConfigYaml.serializer(), yaml)
         } catch (e: Exception) {
-            return ConfigResult.Invalid("Ugyldig .idun.yaml: ${e.message?.lineSequence()?.firstOrNull() ?: e::class.simpleName}")
+            return ConfigResult.Invalid("Ugyldig .github/idun.yaml: ${e.message?.lineSequence()?.firstOrNull() ?: e::class.simpleName}")
         }
 
     val maxChangedLines = parsed.maxChangedLines

@@ -28,6 +28,8 @@ class IdunConfigTest {
         d.protectedContent.any { it.containsMatchIn("object Users : Table(\"users\")") } shouldBe true
         d.protectedContent.any { it.containsMatchIn("object Users : LongIdTable()") } shouldBe true
         d.protectedContent.any { it.containsMatchIn("object Users : exposed.Table(\"users\")") } shouldBe true
+        d.protectedContent.any { it.containsMatchIn("object Users : org.jetbrains.exposed.sql.Table(\"users\")") } shouldBe true
+        d.protectedContent.any { it.containsMatchIn("object Users : org.jetbrains.exposed.dao.id.LongIdTable(\"users\")") } shouldBe true
         d.protectedContent.any { it.containsMatchIn("@Entity") } shouldBe true
         d.protectedContent.any { it.containsMatchIn("@jakarta.persistence.Table(name = \"x\")") } shouldBe true
         d.protectedContent.any { it.containsMatchIn("@Entityish") } shouldBe false
