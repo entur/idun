@@ -139,4 +139,11 @@ class RenderTest {
     fun `NOT_REFACTOR_ANY_MORE har markor`() {
         NOT_REFACTOR_ANY_MORE shouldStartWith "<!-- idun:comment -->"
     }
+
+    @Test
+    fun `Safe-checken starter med fast tekst, så modellens oppsummering ikke kan starte en markdown-blokk`() {
+        listOf("# Overskrift", "> sitat", "- punkt", "| a | b |", "    kodeblokk", "1. liste", "***").forEach { summary ->
+            renderCheck(Outcome.Safe(validResponse().copy(summary = summary))).summary shouldStartWith "Modellens oppsummering: "
+        }
+    }
 }

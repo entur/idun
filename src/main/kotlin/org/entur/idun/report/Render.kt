@@ -50,7 +50,8 @@ fun renderCheck(outcome: Outcome): CheckRunWrite {
                 status = "completed",
                 conclusion = "success",
                 title = "Trygg refaktorering",
-                summary = defuse(outcome.review.summary),
+                // Fast tekst først: modellens tekst kan da ikke starte en overskrift, et sitat, en liste eller kode.
+                summary = "Modellens oppsummering: ${defuse(outcome.review.summary)}",
                 externalId = outcome.externalId(),
             )
         is Outcome.NeedsHuman ->
