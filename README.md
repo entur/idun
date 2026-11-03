@@ -31,6 +31,8 @@ Settes et repo til `off`, blir en godkjenning Idun allerede har gitt på gjelden
 - **Én kommentar**, som redigeres i stedet for at det skrives nye. Den har utfallet, hvilke regler som feilet eller modellens funn, og hva et menneske bør se på.
 - **Label:** `idun:approved` eller `idun:needs-human`, aldri begge.
 - **Godkjenning** (bare i `approve`): en review med `APPROVE` på akkurat den commiten som ble vurdert. En ny push trekker godkjenningen tilbake, og Idun vurderer den nye commiten fra bunnen. Endres tittelen bort fra `refactor`, trekkes godkjenningen tilbake og labelen fjernes.
+  - **Tilbaketrukket er tilbaketrukket:** Er en review fra Idun på en head-commit først trukket tilbake, godkjenner Idun aldri den commiten igjen. Det gjelder enten et menneske trakk den tilbake, eller Idun gjorde det selv fordi tittelen eller basen ble endret på samme commit. Da trengs en ny push eller en godkjenning fra et menneske.
+  - **Ny modell eller ny prompt:** Når Idun deployes med en ny `GEMINI_MODEL` eller en høyere `PROMPT_VERSION`, endres fingeravtrykket. Da vurderer Idun åpne PR-er på nytt ved neste hendelse, og godkjenningene de allerede har, trekkes tilbake og gis ikke igjen før en ny push.
 
 ## Feedback
 
