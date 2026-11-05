@@ -6,6 +6,7 @@ enum class ReasonCode {
     PROTECTED_PATH,
     PROTECTED_CONTENT,
     TEST_CHANGED,
+    TEST_ADDED,
     OTHER_FILE,
     NO_SOURCE,
     MISSING_DIFF,

@@ -9,7 +9,7 @@ Hvis Idun er i tvil, går PR-en til et menneske. Den skal heller sende for mange
 ## Hvordan den bestemmer
 
 1. **Tittelen** må ha typen `refactor`. PR-er av andre typer ignoreres helt: ingen check, ingen kommentar, ingen label.
-2. **Filreglene** (vanlig kode, ingen AI) stopper PR-er som er markert som breaking (`refactor!:`), kommer fra en fork, rører API-spec, databaseskjema, konfigurasjon, workflows eller bygg-filer, endrer tester eller andre filer enn kildekode, endrer for mange filer, eller har over 50 endrede linjer kildekode.
+2. **Filreglene** (vanlig kode, ingen AI) stopper PR-er som er markert som breaking (`refactor!:`), kommer fra en fork, rører API-spec, databaseskjema, konfigurasjon, workflows eller bygg-filer, legger til eller endrer tester (en refactor-PR som rører tester går til et menneske), endrer andre filer enn kildekode, endrer for mange filer, eller har over 50 endrede linjer kildekode.
 3. **CI** på head-commiten må være grønn.
 4. **Gemini** (Vertex AI) leser diffen mot en sjekkliste for endret oppførsel. PR-en går bare videre når modellen svarer at oppførselen er bevart, alle punkter er besvart med «nei», og hver påstand har en kilde. Timeout, for stor input, ugyldig svar eller et brukt daglig kostnadstak sender PR-en til et menneske.
 

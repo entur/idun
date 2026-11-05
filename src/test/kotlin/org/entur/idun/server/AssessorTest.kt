@@ -187,13 +187,13 @@ class AssessorTest {
         }
 
     @Test
-    fun `PR med bare nye tester gir needs-human uten modellkall`() =
+    fun `PR med bare ny test gir needs-human uten modellkall`() =
         runBlocking<Unit> {
             gh.files = listOf(sourceFile(path = "src/test/kotlin/org/entur/products/ATest.kt", status = FileStatus.ADDED))
             assess()
             reviewer.calls shouldBe 0
             gh.ownRuns.getValue(HEAD).externalId shouldBe "needs-human"
-            gh.ownRuns.getValue(HEAD).summary shouldContain "NO_SOURCE"
+            gh.ownRuns.getValue(HEAD).summary shouldContain "TEST_ADDED"
         }
 
     @Test

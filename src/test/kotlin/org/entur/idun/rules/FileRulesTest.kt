@@ -44,24 +44,32 @@ class FileRulesTest {
     }
 
     @Test
-    fun `ny testfil er ok og telles ikke`() {
+    fun `ny testklasse sammen med gyldig kildeendring gir TEST_ADDED`() {
         val r =
             evaluateFiles(
                 listOf(src("src/test/kotlin/ATest.kt", 300, 0, FileStatus.ADDED), src(kotlinDao, 10, 0)),
                 mapOf(kotlinDao to FileContents("", "")),
                 cfg,
             )
-        r.eligible shouldBe true
+        r.reasons.map { it.code } shouldBe listOf(ReasonCode.TEST_ADDED)
+        r.reasons.single().detail shouldBe "Ny testfil src/test/kotlin/ATest.kt: en refactor-PR skal ikke endre testene"
+        r.eligible shouldBe false
         r.changedLines shouldBe 10
     }
 
     @Test
+    fun `ny testressurs gir TEST_ADDED`() {
+        evaluateFiles(listOf(src("src/test/resources/fixture.json", 5, 0, FileStatus.ADDED), src(kotlinDao, 1, 0)), mapOf(kotlinDao to FileContents("", "")), cfg)
+            .reasons.map { it.code } shouldBe listOf(ReasonCode.TEST_ADDED)
+    }
+
+    @Test
     fun `endret eller omdøpt test stoppes`() {
-        classify(src("src/test/kotlin/ATest.kt", 1, 1), cfg) shouldBe FileClass.EXISTING_TEST
+        classify(src("src/test/kotlin/ATest.kt", 1, 1), cfg) shouldBe FileClass.TEST
         classify(
             src("src/test/kotlin/BTest.kt", 0, 0, FileStatus.RENAMED, prev = "src/test/kotlin/ATest.kt"),
             cfg,
-        ) shouldBe FileClass.EXISTING_TEST
+        ) shouldBe FileClass.TEST
         evaluateFiles(listOf(src("src/test/kotlin/ATest.kt", 1, 1)), emptyMap(), cfg)
             .reasons.single().code shouldBe ReasonCode.TEST_CHANGED
     }
@@ -119,8 +127,8 @@ class FileRulesTest {
     }
 
     @Test
-    fun `fjernet testfil er EXISTING_TEST`() {
-        classify(src("src/test/kotlin/ATest.kt", 0, 5, FileStatus.REMOVED), cfg) shouldBe FileClass.EXISTING_TEST
+    fun `fjernet testfil er TEST`() {
+        classify(src("src/test/kotlin/ATest.kt", 0, 5, FileStatus.REMOVED), cfg) shouldBe FileClass.TEST
     }
 
     @Test
@@ -178,15 +186,15 @@ class FileRulesTest {
     @Test
     fun `kopiert inn i en teststi er ikke en ny test`() {
         classify(src("src/test/kotlin/CTest.kt", 10, 0, FileStatus.COPIED, prev = "src/test/kotlin/ATest.kt"), cfg) shouldBe
-            FileClass.EXISTING_TEST
+            FileClass.TEST
         classify(src("src/test/kotlin/CTest.kt", 10, 0, FileStatus.COPIED, prev = "src/main/kotlin/A.kt"), cfg) shouldBe
-            FileClass.EXISTING_TEST
+            FileClass.TEST
     }
 
     @Test
-    fun `flyttet fra test til kilde er EXISTING_TEST`() {
+    fun `flyttet fra test til kilde er TEST`() {
         classify(src("src/main/kotlin/A.kt", 0, 0, FileStatus.RENAMED, prev = "src/test/kotlin/A.kt"), cfg) shouldBe
-            FileClass.EXISTING_TEST
+            FileClass.TEST
     }
 
     @Test
@@ -198,7 +206,7 @@ class FileRulesTest {
     @Test
     fun `innsnevret testPaths gjør tester utenfor innsnevringen til OTHER`() {
         val narrowed = (IdunConfig.fromYaml("testPaths: [\"**/src/test/kotlin/**\"]") as ConfigResult.Ok).config
-        classify(src("src/test/kotlin/ATest.kt", 5, 0, FileStatus.ADDED), narrowed) shouldBe FileClass.NEW_TEST
+        classify(src("src/test/kotlin/ATest.kt", 5, 0, FileStatus.ADDED), narrowed) shouldBe FileClass.TEST
         classify(src("src/test/java/ATest.java", 5, 0, FileStatus.ADDED), narrowed) shouldBe FileClass.OTHER
         classify(src("src/testFixtures/kotlin/Fixture.kt", 5, 0, FileStatus.ADDED), narrowed) shouldBe FileClass.OTHER
     }
@@ -210,14 +218,12 @@ class FileRulesTest {
         r.reasons.single().detail shouldBe "6 av høyst 5 linjer"
     }
 
-    // --- bare Kotlin/Java teller som ny test (I4) ---
-
     @Test
-    fun `ny ikke-kodefil under teststi er OTHER`() {
-        classify(src("src/test/resources/fixture.json", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.OTHER
-        classify(src("src/test/kotlin/Helper.kts", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.OTHER
-        classify(src("src/test/kotlin/ATest.kt", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.NEW_TEST
-        classify(src("src/test/java/ATest.java", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.NEW_TEST
+    fun `alle nye filer under teststi er TEST`() {
+        classify(src("src/test/resources/fixture.json", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.TEST
+        classify(src("src/test/kotlin/Helper.kts", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.TEST
+        classify(src("src/test/kotlin/ATest.kt", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.TEST
+        classify(src("src/test/java/ATest.java", 5, 0, FileStatus.ADDED), cfg) shouldBe FileClass.TEST
     }
 
     @Test
@@ -260,9 +266,8 @@ class FileRulesTest {
 
     @Test
     fun `uten kildekodefiler etter reglene gir NO_SOURCE`() {
-        val r = evaluateFiles(listOf(src("src/test/kotlin/ATest.kt", 10, 0, FileStatus.ADDED)), emptyMap(), cfg)
+        val r = evaluateFiles(emptyList(), emptyMap(), cfg)
         r.reasons.map { it.code } shouldBe listOf(ReasonCode.NO_SOURCE)
         r.eligible shouldBe false
-        evaluateFiles(emptyList(), emptyMap(), cfg).reasons.map { it.code } shouldBe listOf(ReasonCode.NO_SOURCE)
     }
 }

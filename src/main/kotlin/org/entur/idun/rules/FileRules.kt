@@ -14,16 +14,13 @@ data class ChangedFile(
     val patch: String?,
 )
 
-enum class FileClass { PROTECTED, EXISTING_TEST, NEW_TEST, SOURCE, OTHER }
+enum class FileClass { PROTECTED, TEST, SOURCE, OTHER }
 
 /**
  * Kontrolltegn og linjeskift (alt under U+0020, U+007F, U+0085, U+2028 og U+2029). En filsti med slike tegn er
  * `OTHER`, og de fjernes fra tittelen før den når modellen, så de ikke kan bryte opp prompten eller rapportene.
  */
 val CONTROL_CHARACTERS = Regex("[\\u0000-\\u001f\\u007f\\u0085\\u2028\\u2029]")
-
-/** Filendelsene en ny fil under en teststi må ha for å telle som ny test. */
-private val TEST_CODE_SUFFIXES = listOf(".kt", ".java")
 
 /** Filinnhold før og etter endringen. `null` betyr at filen ikke fantes på den siden. */
 data class FileContents(
@@ -57,18 +54,12 @@ fun classify(
 
     if (paths.any { config.looksLikeTestAndSource(it) }) return FileClass.OTHER
 
-    if (config.isTest(file.path)) {
-        return when {
-            file.status != FileStatus.ADDED -> FileClass.EXISTING_TEST
-            // Bare kode er en ny test. Andre nye filer under teststier (ressurser, `META-INF/services`) kan endre
-            // hvilke tester som kjører, og må ses av et menneske.
-            TEST_CODE_SUFFIXES.any { file.path.endsWith(it) } -> FileClass.NEW_TEST
-            else -> FileClass.OTHER
-        }
-    }
-    // Flyttet ut av en teststi: aldri en ny test.
+    // Alle filer under teststier er TEST, også nye: en ny testklasse kan svekke eksisterende tester uten at
+    // modellen ser det (for eksempel en `@Configuration` med `@Primary`-bønner eller en klasse som skygger for produksjonskode).
+    if (config.isTest(file.path)) return FileClass.TEST
+    // Flyttet ut av en teststi: fortsatt en endret test.
     if (file.status == FileStatus.RENAMED && file.previousPath != null && config.isTest(file.previousPath)) {
-        return FileClass.EXISTING_TEST
+        return FileClass.TEST
     }
 
     if (paths.all { config.isSource(it) }) return FileClass.SOURCE
@@ -91,9 +82,8 @@ fun evaluateFiles(
     for (file in files) {
         when (classify(file, config)) {
             FileClass.PROTECTED -> reasons += Reason(ReasonCode.PROTECTED_PATH, "Beskyttet sti: ${describe(file)}")
-            FileClass.EXISTING_TEST -> reasons += Reason(ReasonCode.TEST_CHANGED, "Eksisterende test er endret: ${describe(file)}")
+            FileClass.TEST -> reasons += testReason(file)
             FileClass.OTHER -> reasons += Reason(ReasonCode.OTHER_FILE, "Fil utenfor kildekode og tester: ${describe(file)}")
-            FileClass.NEW_TEST -> Unit
             FileClass.SOURCE -> {
                 sourceFiles += file
                 sourceReason(file, contents[file.path], config)?.let { reasons += it }
@@ -112,6 +102,13 @@ fun evaluateFiles(
 
     return RuleResult(reasons, sourceFiles, changedLines)
 }
+
+private fun testReason(file: ChangedFile): Reason =
+    if (file.status == FileStatus.ADDED) {
+        Reason(ReasonCode.TEST_ADDED, "Ny testfil ${file.path}: en refactor-PR skal ikke endre testene")
+    } else {
+        Reason(ReasonCode.TEST_CHANGED, "Eksisterende test er endret: ${describe(file)}")
+    }
 
 private fun sourceReason(
     file: ChangedFile,
