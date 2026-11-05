@@ -15,7 +15,7 @@ Hvis Idun er i tvil, går PR-en til et menneske. Den skal heller sende for mange
 
 ## Moduser
 
-Modusen settes per repo i Iduns egen konfigurasjon: `repo_modes` i `terraform/env/prd.tfvars`, for eksempel `"entur/idun-sandbox=approve,entur/products-api=advise"`. Den endres med en PR og en release. Den leses aldri fra filer i repoet som vurderes, fordi en PR kan endre filer. Et repo som ikke er listet, er `off`, og en misformet verdi, også en ukjent modus som `aprove`, gjør alle repoer `off`. Rulles Idun ut i hele orgen, kan en custom property på orgen erstatte listen.
+Modusen settes per repo i Iduns egen konfigurasjon: `repo_modes` i `terraform/env/prd.tfvars` i `entur/idun-infra` (internt), for eksempel `"entur/idun-sandbox=approve,entur/products-api=advise"`. Den endres med en PR i `entur/idun-infra`. Den leses aldri fra filer i repoet som vurderes, fordi en PR kan endre filer. Et repo som ikke er listet, er `off`, og en misformet verdi, også en ukjent modus som `aprove`, gjør alle repoer `off`. Rulles Idun ut i hele orgen, kan en custom property på orgen erstatte listen.
 
 | Modus | Oppførsel |
 |---|---|
@@ -53,9 +53,9 @@ Konfigurasjonen kan bare gjøre reglene strengere: linjegrensen kan senkes, men 
 - [ ] **CI** kjører på PR-er og rapporterer status på head-commiten, siden Idun venter på grønn CI.
 - [ ] **Kildestier:** standardene er `**/src/main/**/*.kt` og `**/src/main/**/*.java` for kildekode og `**/src/test/**` m.fl. for tester. Avviker repoet, legg inn `.github/idun.yaml`.
 - [ ] **PR-titler** følger conventional commits, så `refactor:` faktisk brukes for refaktoreringer.
-- [ ] **Start i `advise`:** legg til `owner/repo=advise` i `repo_modes` i `terraform/env/prd.tfvars` (PR og release), og følg vurderingene og tilbakemeldingene en stund.
+- [ ] **Start i `advise`:** legg til `owner/repo=advise` i `repo_modes` i `terraform/env/prd.tfvars` i `entur/idun-infra` (en PR der), og følg vurderingene og tilbakemeldingene en stund.
 - [ ] **Gå til `approve`** når teamet er enig i vurderingene, på samme måte (`owner/repo=approve`).
 
 ## Drift og utvikling
 
-Se [CONTRIBUTING.md](CONTRIBUTING.md) for å kjøre lokalt, legge inn hemmeligheter, deploy og eval. Idun er eid av `team-produkt` og kjører på Cloud Run i `ent-idun-prd`. Det er én GitHub-app, `entur-idun`, installert på `entur/idun-sandbox` (modus `approve`, for testing) og på `entur/products-api` (modus `advise` når den legges til i `repo_modes`).
+Se [CONTRIBUTING.md](CONTRIBUTING.md) for å kjøre lokalt, release og eval. Infrastrukturen, hemmelighetene og deployen ligger i det interne repoet `entur/idun-infra`, siden Entur ikke legger infrastrukturkonfigurasjon i offentlige repoer. Idun er eid av `team-produkt` og kjører på Cloud Run i `ent-idun-prd`. Det er én GitHub-app, `entur-idun`, installert på `entur/idun-sandbox` (modus `approve`, for testing) og på `entur/products-api` (modus `advise` når den legges til i `repo_modes`).

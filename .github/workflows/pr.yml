@@ -1,7 +1,7 @@
 name: CI
 
-# Hver PR: tester, Docker-lint og -build, Terraform-lint og -plan. Ingenting
-# pushes eller applies; prd endres bare gjennom en release (release.yml).
+# Hver PR: tester, Docker-lint og -build. Ingenting pushes. Infrastruktur og
+# deploy ligger i entur/idun-infra (internt).
 on:
   pull_request:
     branches: [main]
@@ -42,8 +42,8 @@ jobs:
       contents: read
 
   # Et vanlig build uten registry-innlogging: det viser at imaget bygger på
-  # hver PR, også for Dependabot (de får ikke OIDC-token). Releaser bygger og
-  # pusher med gha-docker (deploy.yml).
+  # hver PR, også for Dependabot. Releaser bygges med gha-docker
+  # (release.yml).
   docker-build:
     name: Docker Build
     needs: docker-lint
@@ -54,25 +54,3 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build
         run: docker build --tag idun:pr .
-
-  terraform-lint:
-    name: Terraform Lint
-    uses: entur/gha-terraform/.github/workflows/lint.yml@v3
-    permissions:
-      contents: read
-
-  # På release-PR-en (version.txt er bumpet) er dette en forhåndsvisning av
-  # deployen. Hoppes over for Dependabot, som ikke får
-  # OIDC-token for GCP; en hoppet over jobb teller som grønn.
-  terraform-plan:
-    name: Terraform Plan (prd)
-    needs: terraform-lint
-    if: github.actor != 'dependabot[bot]'
-    uses: entur/gha-terraform/.github/workflows/plan.yml@v3
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-    with:
-      environment: prd
-    secrets: inherit

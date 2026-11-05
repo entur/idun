@@ -1,13 +1,13 @@
 name: Release
 
-# Den eneste veien inn i prd. En push til main åpner eller oppdaterer
-# Release Please-PR-en; når den merges, opprettes releasen, og deploy.yml
-# bygger den versjonen og kjører Terraform. Kjør
-# manuelt for å bruke den gjeldende releasen på nytt.
+# En push til main åpner eller oppdaterer Release Please-PR-en. Når den
+# merges, opprettes releasen, og imaget bygges og skannes som en artefakt.
+# Ingenting pushes eller deployes herfra: dette repoet har ingen
+# GCP-tilgang. Publisering og deploy skjer i entur/idun-infra (internt), med
+# versjonen og run-ID-en som jobbsammendraget skriver ut.
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
 concurrency:
   group: release-main
@@ -19,7 +19,6 @@ permissions: {}
 jobs:
   release:
     name: Release Please
-    if: github.event_name == 'push'
     uses: entur/gha-meta/.github/workflows/release.yml@v1
     with:
       release_type: manifest
@@ -30,27 +29,56 @@ jobs:
       pull-requests: write
       issues: write
 
-  deploy:
-    name: Deploy
+  docker-build:
+    name: Docker Build
     needs: release
-    # Bare main deployer: en manuell kjøring fra en annen gren ville ellers
-    # applyet den grenens Terraform. Vakten ligger i filen grenen kjører, så
-    # den stopper feil, ikke den som redigerer filen på grenen sin.
-    if: >-
-      always() && !cancelled() && github.ref == 'refs/heads/main' &&
-      (needs.release.outputs.releases_created == 'true' || github.event_name == 'workflow_dispatch')
-    uses: ./.github/workflows/deploy.yml
+    if: github.ref == 'refs/heads/main' && needs.release.outputs.releases_created == 'true'
+    uses: entur/gha-docker/.github/workflows/build.yml@v1
     with:
-      # En manuell kjøring bruker releasen som allerede er bygget på nytt.
-      build: ${{ github.event_name == 'push' }}
-    secrets: inherit
-    concurrency:
-      group: deploy-prd
-      cancel-in-progress: false
+      image_name: idun
+      # Ingen GitHub Factory-oppsett her: bygget logger ikke inn noe sted.
+      authenticate: false
+    # id-token kreves fordi build-jobben i gha-docker ber om det; uten
+    # innlogging brukes det ikke, og repoet har ingen GCP-tillit.
+    permissions:
+      contents: read
+      id-token: write
+
+  docker-scan:
+    name: Docker Scan
+    needs: docker-build
+    uses: entur/gha-security/.github/workflows/docker-scan.yml@v2
+    with:
+      image_artifact: ${{ needs.docker-build.outputs.image_artifact }}
     permissions:
       actions: read
       contents: write
-      id-token: write
       issues: write
       pull-requests: write
       security-events: write
+
+  summary:
+    name: Summary
+    # Bare et skannet image skal publiseres, så sammendraget skrives etter
+    # skanningen.
+    needs: [release, docker-build, docker-scan]
+    runs-on: ubuntu-26.04
+    permissions: {}
+    steps:
+      - name: Write version and run ID
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          RUN_ID: ${{ github.run_id }}
+          IMAGE_ARTIFACT: ${{ needs.docker-build.outputs.image_artifact }}
+        run: |
+          {
+            echo "## Idun $VERSION"
+            echo
+            echo "Imaget er bygget og skannet som artefakten \`$IMAGE_ARTIFACT\` (lever i 4 dager)."
+            echo "Publiser det med workflowen **Publish image** i entur/idun-infra:"
+            echo
+            echo "| Input | Verdi |"
+            echo "|---|---|"
+            echo "| \`version\` | \`$VERSION\` |"
+            echo "| \`run_id\` | \`$RUN_ID\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
