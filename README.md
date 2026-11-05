@@ -79,6 +79,76 @@ Tørrkjøringen leser PR-en, filene, CI-status og Gemini-svaret på ekte, så de
 - om en godkjenning fra appen teller for branch protection (ingenting godkjennes på ekte),
 - webhooks, signaturer eller flyten i sanntid (`check_suite`, `status`, låser og gjenbruk av tidligere vurderinger), siden hver kjøring er en ny vurdering uten tidligere kommentarer eller checks fra Idun.
 
+## Kjør som GitHub Action (demo)
+
+For demoen i `entur/idun-sandbox` kan Idun kjøre som en workflow i repoet i stedet for som GitHub-app på Cloud Run. Det er samme vurdering som appen gjør (regler, CI-status, Gemini), men den skrives til GitHub på ekte med `assess --write`: check `idun/refactor`, kommentar, label og, i `approve`, godkjenning. Uten `--write` er `assess` fortsatt bare en tørrkjøring.
+
+Den skriver med workflowens `GITHUB_TOKEN`, altså som `github-actions[bot]` (app-id 15368). `--write` krever `GITHUB_TOKEN` og henter aldri token fra `gh auth token`, så ingen skriver som seg selv ved et uhell. Med `--write` er modusen `advise` som standard; godkjenning må bes om med `--mode approve`. Exit-kodene er de samme som i tørrkjøringen, og kostnadstaket er 5 USD per kjøring.
+
+Siden repoets egen CI også kjører som GitHub Actions (samme app-id), kjenner Idun igjen sin egen check på app-id **og** navnet `idun/refactor`, ikke på app-id alene. Resten av CI-en fra Actions teller som vanlig.
+
+Oppsett i repoet:
+
+- **Godkjenning:** Settings → Actions → General → «Allow GitHub Actions to create and approve pull requests» må være på, ellers avviser GitHub godkjenningen (`--mode approve`).
+- **GCP:** workflowen logger inn i GCP med GitHub Factory / Workload Identity Federation (`entur/gha-meta/.github/actions/cloud-auth`). Repoet trenger variablene `WORKLOAD_IDENTITY_PROVIDER` og `SERVICE_ACCOUNT` (og `GCP_PROJECT`), og service-kontoen trenger `roles/aiplatform.user` i prosjektet.
+- **Hvilken PR:** workflowen startes av `workflow_run` når repoets CI-workflow er ferdig, og PR-nummeret hentes fra `github.event.workflow_run.pull_requests[0].number`. Listen er tom for PR-er fra forks, og da hopper workflowen over. `workflow_run` virker bare når workflow-filen ligger på default-branchen.
+
+Begrensninger:
+
+- Det er ikke en GitHub-app. Det er ingen webhooks: Idun vurderer bare når CI-workflowen er ferdig, ikke når tittelen endres eller en status kommer. Har repoet flere CI-workflows, gir de som ikke er ferdige `Waiting`, og neste ferdige workflow starter en ny vurdering.
+- Kommentarer og reviews kjennes igjen på `github-actions[bot]`. Andre workflows i repoet som kommenterer eller godkjenner som `github-actions[bot]`, kan forveksles med Iduns (for eksempel kan Idun trekke tilbake en slik godkjenning). Greit for sandkassen, ikke for andre repoer.
+- Den tester ikke om en godkjenning fra appen `entur-idun` teller for branch protection; en godkjenning fra `github-actions[bot]` er ikke det samme.
+- En Actions-suite på PR-ens head som ikke er ferdig gir alltid `Waiting`, også om den bare venter på Iduns egen check (feiler lukket). Idun-workflowens egen jobb kjører på default-branchens sha og påvirker ikke CI-vurderingen av PR-en.
+
+Eksempel, `.github/workflows/idun.yml` (bytt `CI` med navnet på repoets CI-workflow og `<ref>` med en tag eller commit i `entur/idun`):
+
+```yaml
+name: Idun
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  checks: write
+  pull-requests: write
+  issues: write
+  contents: read
+  actions: read
+  statuses: read
+  id-token: write
+
+jobs:
+  assess:
+    # Bare PR-er i repoet selv: for fork-PR-er er pull_requests tom.
+    if: github.event.workflow_run.event == 'pull_request' && toJSON(github.event.workflow_run.pull_requests) != '[]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: entur/idun
+          ref: <ref>
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: entur/gha-meta/.github/actions/cloud-auth@v1
+        with:
+          environment: prd
+          cloud_provider: gcp
+          gcp_workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          gcp_service_account: ${{ vars.SERVICE_ACCOUNT }}
+      - name: Vurder PR-en
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: ./gradlew assess --args="${{ github.repository }} $PR_NUMBER --write --mode approve"
+```
+
 ## Drift og utvikling
 
 Se [CONTRIBUTING.md](CONTRIBUTING.md) for å kjøre lokalt, release og eval. Infrastrukturen, hemmelighetene og deployen ligger i det interne repoet `entur/idun-infra`, siden Entur ikke legger infrastrukturkonfigurasjon i offentlige repoer. Idun er eid av `team-produkt` og kjører på Cloud Run i `ent-idun-prd`. Det er én GitHub-app, `entur-idun`, installert på `entur/idun-sandbox` (modus `approve`, for testing) og på `entur/products-api` (modus `advise` når den legges til i `repo_modes`).

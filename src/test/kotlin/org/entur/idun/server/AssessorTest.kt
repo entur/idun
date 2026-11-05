@@ -13,9 +13,11 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.entur.idun.ci.GITHUB_ACTIONS_APP_ID
+import org.entur.idun.ci.GITHUB_ACTIONS_LOGIN
 import org.entur.idun.decide.Mode
 import org.entur.idun.github.CheckRunInfo
 import org.entur.idun.github.CheckRunWrite
+import org.entur.idun.github.CheckSuiteInfo
 import org.entur.idun.github.GitHubApiException
 import org.entur.idun.github.IssueComment
 import org.entur.idun.github.Reactions
@@ -722,5 +724,61 @@ class AssessorTest {
             assessor.onCommit(installationId = 1, repo = REPO, sha = HEAD)
             reviewer.calls shouldBe 1
             gh.ownRuns.getValue(HEAD).externalId shouldStartWith "safe:"
+        }
+
+    // --- Som GitHub Actions (`assess --write`): Idun har samme app-id som repoets CI ---
+
+    private val actionsGh =
+        FakeGitHub(ownAppId = GITHUB_ACTIONS_APP_ID, appLogin = GITHUB_ACTIONS_LOGIN).apply {
+            ciRuns += CheckRunInfo(2, "PR title lint", "completed", "success", checkSuiteId = 12, appId = GITHUB_ACTIONS_APP_ID, externalId = null)
+            suites += CheckSuiteInfo(12, "completed", GITHUB_ACTIONS_APP_ID)
+        }
+
+    private val actionsAssessor =
+        Assessor(
+            github = CountingFactory(actionsGh),
+            reviewer = reviewer,
+            ownAppId = GITHUB_ACTIONS_APP_ID,
+            appLogin = GITHUB_ACTIONS_LOGIN,
+            locks = PrLocks(),
+            log = log.logger,
+            modeOf = { Mode.APPROVE },
+            model = "gemini-test",
+        )
+
+    private suspend fun assessAsActions() = actionsAssessor.onPullRequest(installationId = 0, repo = REPO, number = 7, action = "synchronize")
+
+    @Test
+    fun `som Actions teller grønn CI fra samme app, og safe godkjennes i approve`() =
+        runBlocking<Unit> {
+            assessAsActions()
+            reviewer.calls shouldBe 1
+            val check = actionsGh.ownRuns.getValue(HEAD)
+            check.conclusion shouldBe "success"
+            check.externalId shouldStartWith "safe:"
+            val review = actionsGh.reviews.single()
+            review.login shouldBe GITHUB_ACTIONS_LOGIN
+            review.state shouldBe "APPROVED"
+            actionsGh.labels shouldContainExactly setOf(APPROVED_LABEL)
+            actionsGh.comments.single().login shouldBe GITHUB_ACTIONS_LOGIN
+
+            // Egen idun/refactor (app 15368) kjennes igjen på navn og app-id: gjenbrukes, og teller ikke som CI.
+            assessAsActions()
+            reviewer.calls shouldBe 1
+            actionsGh.reviews.single().state shouldBe "APPROVED"
+            actionsGh.comments shouldHaveSize 1
+        }
+
+    @Test
+    fun `som Actions gir CI fra samme app som ikke er ferdig Waiting uten modellkall`() =
+        runBlocking<Unit> {
+            actionsGh.ciRuns[0] = actionsGh.ciRuns[0].copy(status = "in_progress", conclusion = null)
+            actionsGh.suites[0] = actionsGh.suites[0].copy(status = "in_progress")
+            assessAsActions()
+            reviewer.calls shouldBe 0
+            val check = actionsGh.ownRuns.getValue(HEAD)
+            check.status shouldBe "in_progress"
+            check.externalId shouldBe "waiting"
+            actionsGh.reviews.shouldBeEmpty()
         }
 }

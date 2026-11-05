@@ -9,6 +9,9 @@ enum class CiState { GREEN, PENDING, RED }
 
 const val GITHUB_ACTIONS_APP_ID = 15368L
 
+/** Brukeren GitHub Actions skriver som med workflowens `GITHUB_TOKEN`. */
+const val GITHUB_ACTIONS_LOGIN = "github-actions[bot]"
+
 private val GREEN_CONCLUSIONS = setOf("success", "neutral", "skipped")
 
 /**
