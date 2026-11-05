@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/entur/idun/compare/v0.2.0...v0.3.0) (2026-11-05)
+
+
+### Features
+
+* assess --write runs Idun as a GitHub Action ([e83dd39](https://github.com/entur/idun/commit/e83dd3957ac8faa7f5eac2818be1097e13397a9e))
+* assess command for local dry run against a real PR ([09b9545](https://github.com/entur/idun/commit/09b9545f95c890b8b4b0bccb0ffd38c2024f3204))
+* DryRunGitHub that records writes instead of sending them ([d7d9525](https://github.com/entur/idun/commit/d7d9525b1155cc244ca686addf9c8623d4620106))
+* local dry run and GitHub Actions mode for assessments ([71201a8](https://github.com/entur/idun/commit/71201a81626d0069b16809bc2ede6f64a0d77817))
+
+
+### Bug Fixes
+
+* **ci:** identify Idun's own check by app id and name, not app id alone ([5ebbc44](https://github.com/entur/idun/commit/5ebbc44ad539fdcbc626872736f4853b8049a4b4))
+
 ## [0.2.0](https://github.com/entur/idun/compare/v0.1.0...v0.2.0) (2026-11-05)
 
 
