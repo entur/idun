@@ -86,6 +86,9 @@ data class Dependencies(
             env: Map<String, String> = System.getenv(),
             clock: Clock = Clock.systemUTC(),
             http: HttpClient? = null,
+            vertexClient: (project: String) -> Client = { project ->
+                Client.builder().vertexAI(true).project(project).location("global").build()
+            },
         ): Dependencies {
             val repoModes = parseRepoModes(env["IDUN_REPO_MODES"])
             repoModes.invalidReason?.let { log.error("idun.repo_modes_invalid reason={} (alle repoer er off)", it) }
@@ -127,7 +130,7 @@ data class Dependencies(
                     }
                 // Ny klient per vurdering: installasjonstokenet varer en time og caches i AppAuth.
                 val factory = GitHubFactory { installationId -> KtorGitHub(http, auth.installationToken(installationId), appId) }
-                val vertex = Client.builder().vertexAI(true).project(project).location("global").build()
+                val vertex = vertexClient(project)
                 val reviewer =
                     GeminiReviewer(
                         client = vertex,

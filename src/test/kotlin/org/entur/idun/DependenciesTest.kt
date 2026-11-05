@@ -1,6 +1,7 @@
 package org.entur.idun
 
 import io.kotest.matchers.shouldBe
+import io.mockk.mockk
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
@@ -115,7 +116,10 @@ class DependenciesTest {
 
     @Test
     fun `GET app som stemmer gir full modus`() {
-        Dependencies.fromEnvironment(complete, http = appApi("""{"id":123,"slug":"entur-idun"}""")).let {
+        // Ingen ekte Vertex-klient: den krever GCP-innlogging, som CI ikke har.
+        Dependencies
+            .fromEnvironment(complete, http = appApi("""{"id":123,"slug":"entur-idun"}"""), vertexClient = { mockk(relaxed = true) })
+            .let {
             it.degraded shouldBe false
             it.ownAppId shouldBe 123
         }
