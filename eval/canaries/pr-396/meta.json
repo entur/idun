@@ -1,0 +1,1 @@
+{"title": "refactor: refactor version status validation and remove nullvalues api examples", "expected": "needs-human", "source": {"repo": "entur/products-api", "pr": 396}, "rules": ["PROTECTED_PATH", "PROTECTED_PATH"]}

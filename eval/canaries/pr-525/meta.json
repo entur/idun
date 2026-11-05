@@ -1,0 +1,1 @@
+{"title": "refactor(ETU-75389): Split loadAssignments to improve readability", "expected": "needs-human", "source": {"repo": "entur/products-api", "pr": 525}, "rules": ["TOO_LARGE"]}

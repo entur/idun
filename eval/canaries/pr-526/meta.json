@@ -1,0 +1,1 @@
+{"title": "refactor(ETU-75389): Decode grouping operators to enums", "expected": "any", "source": {"repo": "entur/products-api", "pr": 526}, "rules": []}

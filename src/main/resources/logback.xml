@@ -1,0 +1,9 @@
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="no.entur.logging.cloud.gcp.logback.logstash.StackdriverLogstashEncoder"/>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

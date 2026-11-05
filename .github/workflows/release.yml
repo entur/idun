@@ -1,0 +1,84 @@
+name: Release
+
+# En push til main åpner eller oppdaterer Release Please-PR-en. Når den
+# merges, opprettes releasen, og imaget bygges og skannes som en artefakt.
+# Ingenting pushes eller deployes herfra: dette repoet har ingen
+# GCP-tilgang. Publisering og deploy skjer i entur/idun-infra (internt), med
+# versjonen og run-ID-en som jobbsammendraget skriver ut.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+# Ingenting som standard; hver jobb ber om det den trenger.
+permissions: {}
+
+jobs:
+  release:
+    name: Release Please
+    uses: entur/gha-meta/.github/workflows/release.yml@v1
+    with:
+      release_type: manifest
+      config_file: .github/release-please-config.json
+      manifest_file: .github/.release-please-manifest.json
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+  docker-build:
+    name: Docker Build
+    needs: release
+    if: github.ref == 'refs/heads/main' && needs.release.outputs.releases_created == 'true'
+    uses: entur/gha-docker/.github/workflows/build.yml@v1
+    with:
+      image_name: idun
+      # Ingen GitHub Factory-oppsett her: bygget logger ikke inn noe sted.
+      authenticate: false
+    # id-token kreves fordi build-jobben i gha-docker ber om det; uten
+    # innlogging brukes det ikke, og repoet har ingen GCP-tillit.
+    permissions:
+      contents: read
+      id-token: write
+
+  docker-scan:
+    name: Docker Scan
+    needs: docker-build
+    uses: entur/gha-security/.github/workflows/docker-scan.yml@v2
+    with:
+      image_artifact: ${{ needs.docker-build.outputs.image_artifact }}
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      pull-requests: write
+      security-events: write
+
+  summary:
+    name: Summary
+    # Bare et skannet image skal publiseres, så sammendraget skrives etter
+    # skanningen.
+    needs: [release, docker-build, docker-scan]
+    runs-on: ubuntu-26.04
+    permissions: {}
+    steps:
+      - name: Write version and run ID
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          RUN_ID: ${{ github.run_id }}
+          IMAGE_ARTIFACT: ${{ needs.docker-build.outputs.image_artifact }}
+        run: |
+          {
+            echo "## Idun $VERSION"
+            echo
+            echo "Imaget er bygget og skannet som artefakten \`$IMAGE_ARTIFACT\` (lever i 4 dager)."
+            echo "Publiser det med workflowen **Publish image** i entur/idun-infra:"
+            echo
+            echo "| Input | Verdi |"
+            echo "|---|---|"
+            echo "| \`version\` | \`$VERSION\` |"
+            echo "| \`run_id\` | \`$RUN_ID\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
