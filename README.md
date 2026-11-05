@@ -56,6 +56,29 @@ Konfigurasjonen kan bare gjøre reglene strengere: linjegrensen kan senkes, men 
 - [ ] **Start i `advise`:** legg til `owner/repo=advise` i `repo_modes` i `terraform/env/prd.tfvars` i `entur/idun-infra` (en PR der), og følg vurderingene og tilbakemeldingene en stund.
 - [ ] **Gå til `approve`** når teamet er enig i vurderingene, på samme måte (`owner/repo=approve`).
 
+## Prøv lokalt (tørrkjøring)
+
+Du kan la Idun vurdere en ekte PR fra laptopen, uten Cloud Run, uten GitHub-app og uten at noe skrives til GitHub. Check, kommentar, label og godkjenning skrives bare ut i terminalen, med `[tørrkjøring]` foran.
+
+Forutsetninger:
+
+- `gh auth login` (tokenet hentes med `gh auth token`, eller sett `GITHUB_TOKEN`).
+- `gcloud auth application-default login`.
+- Et GCP-prosjekt der du har `roles/aiplatform.user` og Vertex AI-API-et er slått på.
+
+Kjør:
+
+```sh
+GCP_PROJECT=<prosjekt> ./gradlew assess --args="entur/idun-sandbox <pr>"
+```
+
+Modusen er `approve` som standard, så utskriften viser om Idun ville godkjent. Bruk `--mode advise` for å se advise-oppførselen. Valgfritt: `GEMINI_MODEL`, og `GEMINI_PRICE_IN_PER_MTOK`/`GEMINI_PRICE_OUT_PER_MTOK` for at kostnaden skal regnes ut (ellers er den ukjent). Kjøringen har et lokalt kostnadstak på 5 USD. Exit-kode er ulik 0 hvis vurderingen endte i Iduns feilsti.
+
+Tørrkjøringen leser PR-en, filene, CI-status og Gemini-svaret på ekte, så den tester reglene, CI-vurderingen og modellen. Den tester **ikke**:
+
+- om en godkjenning fra appen teller for branch protection (ingenting godkjennes på ekte),
+- webhooks, signaturer eller flyten i sanntid (`check_suite`, `status`, låser og gjenbruk av tidligere vurderinger), siden hver kjøring er en ny vurdering uten tidligere kommentarer eller checks fra Idun.
+
 ## Drift og utvikling
 
 Se [CONTRIBUTING.md](CONTRIBUTING.md) for å kjøre lokalt, release og eval. Infrastrukturen, hemmelighetene og deployen ligger i det interne repoet `entur/idun-infra`, siden Entur ikke legger infrastrukturkonfigurasjon i offentlige repoer. Idun er eid av `team-produkt` og kjører på Cloud Run i `ent-idun-prd`. Det er én GitHub-app, `entur-idun`, installert på `entur/idun-sandbox` (modus `approve`, for testing) og på `entur/products-api` (modus `advise` når den legges til i `repo_modes`).
