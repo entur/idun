@@ -55,3 +55,15 @@ tasks.register<JavaExec>("eval") {
     mainClass = "org.entur.idun.eval.EvalMainKt"
     workingDir = projectDir
 }
+
+// Tørrkjøring: vurderer én ekte PR lokalt uten å skrive til GitHub. Bruker Vertex AI, så den er ikke koblet til `check`.
+tasks.register<JavaExec>("assess") {
+    group = "verification"
+    description =
+        "Vurderer en ekte PR: --args=\"owner/repo 123 [--mode approve|advise] [--write]\". " +
+            "Uten --write skrives ingenting til GitHub; med --write skrives det som github-actions[bot] (se README)."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "org.entur.idun.cli.AssessMainKt"
+    workingDir = projectDir
+    standardInput = System.`in`
+}

@@ -58,6 +58,9 @@ internal class FakeGitHub(
             baseRepoId = 1L,
             changedFiles = 1,
         ),
+    /** Iduns app-id og login: egne check runs, kommentarer og reviews får disse. */
+    private val ownAppId: Long = OWN_APP_ID,
+    private val appLogin: String = APP_LOGIN,
 ) : GitHub {
     val writes = mutableListOf<String>()
     var files: List<ChangedFile> = listOf(sourceFile())
@@ -158,7 +161,7 @@ internal class FakeGitHub(
         call("checkRuns")
         val own =
             ownRuns[sha]?.let {
-                CheckRunInfo(1000, CHECK_NAME, it.status, it.conclusion, checkSuiteId = 999, appId = OWN_APP_ID, externalId = it.externalId)
+                CheckRunInfo(1000, CHECK_NAME, it.status, it.conclusion, checkSuiteId = 999, appId = ownAppId, externalId = it.externalId)
             }
         return ciRuns + listOfNotNull(own)
     }
@@ -203,7 +206,7 @@ internal class FakeGitHub(
     ): Long {
         call("createComment")
         val id = nextId++
-        comments += IssueComment(id, APP_LOGIN, body)
+        comments += IssueComment(id, appLogin, body)
         write("createComment")
         return id
     }
@@ -264,7 +267,7 @@ internal class FakeGitHub(
         body: String,
     ) {
         call("approve")
-        reviews += Review(nextId++, APP_LOGIN, "APPROVED", body, commitId = sha)
+        reviews += Review(nextId++, appLogin, "APPROVED", body, commitId = sha)
         write("approve $sha")
         afterApprove()
     }
