@@ -5,6 +5,7 @@ import org.entur.idun.github.CheckRunInfo
 import org.entur.idun.github.CheckSuiteInfo
 import org.entur.idun.github.StatusInfo
 import org.entur.idun.github.WorkflowRunInfo
+import org.entur.idun.report.CHECK_NAME
 import org.junit.jupiter.api.Test
 
 class CiStatusTest {
@@ -30,7 +31,8 @@ class CiStatusTest {
         suites: List<CheckSuiteInfo> = emptyList(),
         statuses: List<StatusInfo> = emptyList(),
         workflowRuns: List<WorkflowRunInfo> = emptyList(),
-    ) = evaluateCi(runs, suites, statuses, workflowRuns, ownAppId)
+        ownAppId: Long = this.ownAppId,
+    ) = evaluateCi(runs, suites, statuses, workflowRuns, ownAppId, CHECK_NAME)
 
     @Test
     fun `ingen CI gir PENDING`() {
@@ -40,7 +42,7 @@ class CiStatusTest {
     @Test
     fun `egen check run ignoreres`() {
         eval(
-            runs = listOf(run(1), run(2, name = "Idun", status = "in_progress", conclusion = null, suite = 2, appId = ownAppId)),
+            runs = listOf(run(1), run(2, name = CHECK_NAME, status = "in_progress", conclusion = null, suite = 2, appId = ownAppId)),
             suites = listOf(suite(1), suite(2, status = "in_progress", appId = ownAppId)),
         ) shouldBe CiState.GREEN
     }
@@ -48,9 +50,16 @@ class CiStatusTest {
     @Test
     fun `bare egen check run gir PENDING`() {
         eval(
-            runs = listOf(run(2, name = "Idun", conclusion = "failure", suite = 2, appId = ownAppId)),
+            runs = listOf(run(2, name = CHECK_NAME, conclusion = "failure", suite = 2, appId = ownAppId)),
             suites = listOf(suite(2, appId = ownAppId)),
         ) shouldBe CiState.PENDING
+    }
+
+    @Test
+    fun `andre runs fra egen app teller, bare egen check er Iduns`() {
+        eval(
+            runs = listOf(run(1), run(2, name = "noe annet", conclusion = "failure", suite = 2, appId = ownAppId)),
+        ) shouldBe CiState.RED
     }
 
     @Test
@@ -142,5 +151,47 @@ class CiStatusTest {
         eval(statuses = listOf(StatusInfo("ci", "error"))) shouldBe CiState.RED
         eval(statuses = listOf(StatusInfo("ci", "whatever"))) shouldBe CiState.RED
         eval(runs = listOf(run(1)), statuses = listOf(StatusInfo("ci", "success"))) shouldBe CiState.GREEN
+    }
+
+    // --- Actions-modus: Idun kjører som GitHub Actions og har samme app-id som repoets CI ---
+
+    @Test
+    fun `i Actions-modus teller CI fra Actions`() {
+        val actions = GITHUB_ACTIONS_APP_ID
+        eval(runs = listOf(run(1, name = "test")), suites = listOf(suite(1)), ownAppId = actions) shouldBe CiState.GREEN
+        eval(runs = listOf(run(1, name = "test", conclusion = "failure")), suites = listOf(suite(1)), ownAppId = actions) shouldBe CiState.RED
+        eval(
+            runs = listOf(run(1, name = "test", status = "in_progress", conclusion = null)),
+            suites = listOf(suite(1, status = "in_progress")),
+            ownAppId = actions,
+        ) shouldBe CiState.PENDING
+    }
+
+    @Test
+    fun `i Actions-modus ignoreres bare egen idun-refactor`() {
+        eval(
+            runs =
+                listOf(
+                    run(1, name = "test"),
+                    run(2, name = "PR title lint"),
+                    run(3, name = CHECK_NAME, conclusion = "failure"),
+                ),
+            suites = listOf(suite(1)),
+            ownAppId = GITHUB_ACTIONS_APP_ID,
+        ) shouldBe CiState.GREEN
+    }
+
+    @Test
+    fun `i Actions-modus gir bare egen idun-refactor PENDING`() {
+        eval(runs = listOf(run(3, name = CHECK_NAME)), suites = listOf(suite(1)), ownAppId = GITHUB_ACTIONS_APP_ID) shouldBe CiState.PENDING
+    }
+
+    @Test
+    fun `i Actions-modus gir en annen Actions-suite som ikke er ferdig PENDING`() {
+        eval(
+            runs = listOf(run(1, name = "test")),
+            suites = listOf(suite(1), suite(2, status = "in_progress")),
+            ownAppId = GITHUB_ACTIONS_APP_ID,
+        ) shouldBe CiState.PENDING
     }
 }

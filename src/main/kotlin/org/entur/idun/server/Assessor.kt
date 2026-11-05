@@ -287,7 +287,14 @@ class Assessor(
 
         val runs = gh.checkRuns(repo, pr.headSha)
         val ci =
-            evaluateCi(runs, gh.checkSuites(repo, pr.headSha), gh.statuses(repo, pr.headSha), gh.workflowRuns(repo, pr.headSha), ownAppId)
+            evaluateCi(
+                runs,
+                gh.checkSuites(repo, pr.headSha),
+                gh.statuses(repo, pr.headSha),
+                gh.workflowRuns(repo, pr.headSha),
+                ownAppId,
+                CHECK_NAME,
+            )
         decideBeforeReview(ctx.mode, pr, title, ci, null, null)?.let { return Assessment.Fresh(it) }
 
         // Alltid fra base: en PR kan endre sin egen konfig.
